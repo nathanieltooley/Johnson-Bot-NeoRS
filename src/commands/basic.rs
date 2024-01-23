@@ -1,4 +1,4 @@
-use crate::custom_types::{Context, Data, Error};
+use crate::custom_types::{Context, Error};
 use tracing::{info, instrument};
 
 #[poise::command(slash_command, prefix_command)]

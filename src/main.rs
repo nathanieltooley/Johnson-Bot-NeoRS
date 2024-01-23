@@ -5,11 +5,9 @@ mod logging;
 use poise::serenity_prelude::{self as serenity, async_trait, EventHandler, GuildId, Ready};
 use poise::Command;
 
-use custom_types::{Context, Data, Error};
+use custom_types::{Data, Error};
 
-use tracing::level_filters::LevelFilter;
-use tracing::{error, info, instrument};
-use tracing_subscriber::{filter, layer, prelude::*};
+use tracing::{info, instrument};
 
 // Custom data to send between commands
 struct Handler;
