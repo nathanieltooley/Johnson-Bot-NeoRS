@@ -1,24 +1,13 @@
 mod commands;
 mod custom_types;
+mod events;
 mod logging;
 
-use poise::serenity_prelude::{self as serenity, async_trait, EventHandler, GuildId, Ready};
+use poise::serenity_prelude::{self as serenity, GuildId};
 use poise::Command;
 
 use custom_types::{Data, Error};
-
-use tracing::{info, instrument};
-
-// Custom data to send between commands
-struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    #[instrument(skip_all)]
-    async fn ready(&self, _ctx: serenity::Context, _ready: Ready) {
-        info!("Johnson is running!");
-    }
-}
+use events::Handler;
 
 #[allow(dead_code)]
 enum CommandRegistering {
