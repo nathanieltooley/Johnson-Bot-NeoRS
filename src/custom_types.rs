@@ -1,10 +1,11 @@
 pub mod command {
     use mongodb::Database;
+    use tokio::sync::Mutex;
 
     #[derive(Debug)]
     // Custom data to send between commands
     pub struct Data {
-        pub johnson_handle: Database,
+        pub johnson_handle: Mutex<Database>,
     }
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
     pub type Error = Box<dyn std::error::Error + Send + Sync>;

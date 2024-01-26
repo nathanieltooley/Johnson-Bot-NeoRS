@@ -7,6 +7,7 @@ mod mongo;
 use mongodb::Database;
 use poise::serenity_prelude::{self as serenity, GuildId};
 use poise::Command;
+use tokio::sync::Mutex;
 
 use custom_types::command::{Data, Error};
 use events::Handler;
@@ -30,7 +31,7 @@ impl<'a> CommandRegistering {
             CommandRegistering::Global => {
                 poise::builtins::register_globally(ctx, commands).await?;
                 Ok(Data {
-                    johnson_handle: j_handle,
+                    johnson_handle: Mutex::new(j_handle),
                 })
             }
             // Register commands for every provided guild
@@ -40,7 +41,7 @@ impl<'a> CommandRegistering {
                     poise::builtins::register_in_guild(ctx, commands, *guild).await?;
                 }
                 Ok(Data {
-                    johnson_handle: j_handle,
+                    johnson_handle: Mutex::new(j_handle),
                 })
             }
         }
