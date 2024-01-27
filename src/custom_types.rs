@@ -33,14 +33,14 @@ pub mod mongo_schema {
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct User {
-        name: String,
-        discord_id: UserId,
-        date_created: DateTime,
-        vbucks: u32,
-        exp: u32,
-        level: u16,
-        slur_count: Option<Document>,
-        inventory: Option<Vec<Document>>,
-        stroke_count: Option<u32>,
+        pub name: String,
+        pub discord_id: UserId,
+        pub date_created: DateTime,
+        pub vbucks: u32,
+        pub exp: u32,
+        pub level: u16,
+        pub slur_count: Option<Document>,
+        pub inventory: Option<Vec<Document>>,
+        pub stroke_count: Option<u32>,
     }
 }
