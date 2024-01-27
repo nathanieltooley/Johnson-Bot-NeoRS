@@ -1,6 +1,6 @@
 pub mod command {
     use mongodb::Database;
-    use poise::serenity_prelude::prelude::TypeMapKey;
+    use poise::serenity_prelude::{prelude::TypeMapKey, GuildId};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -23,6 +23,13 @@ pub mod command {
 
     impl TypeMapKey for JohnsonDBHandle {
         type Value = Arc<Mutex<Database>>;
+    }
+
+    /// This enum helps streamline the use of getting DB information by
+    /// handling all the code for acquiring handles and locks inside MongoDB helper functions
+    pub enum DBInfo<'a> {
+        PoiseContext(&'a Context<'a>),
+        Event(&'a poise::serenity_prelude::Context, GuildId),
     }
 }
 

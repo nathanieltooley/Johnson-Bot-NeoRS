@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 
 use custom_types::command::{Data, Error, JohnsonDBHandle};
 use events::Handler;
+use tracing::info;
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -71,6 +72,8 @@ async fn main() {
     let mongo_client = mongo::receive_client(&mongo_host)
         .await
         .expect("Johnson should be able to get MongoDB client");
+
+    info!("Mongo data successfully initialized");
 
     let db_handle = Arc::new(Mutex::new(mongo_client.database("Johnson")));
     let poise_db_handle = Arc::clone(&db_handle);
