@@ -1,15 +1,14 @@
-use futures::stream::TryStreamExt;
+use futures::{stream::TryStreamExt, FutureExt};
 use mongodb::{
-    bson::{doc, Document},
+    bson::{doc, oid::ObjectId, Document},
     options::ClientOptions,
-    Client, Collection, Database,
+    Client, ClientSession, Collection, Database,
 };
-use poise::serenity_prelude::GuildId;
+use poise::serenity_prelude::{GuildId, UserId};
 use serde::de::DeserializeOwned;
-use tokio::sync::{Mutex, MutexGuard};
-use tracing::instrument;
+use tracing::{debug, instrument};
 
-use crate::custom_types::{command::DataMongoClient, mongo_schema::User};
+use crate::custom_types::mongo_schema::User;
 
 static DB_NAME: &str = "Johnson";
 
@@ -45,4 +44,95 @@ pub async fn get_users<'a>(
     let user_col = get_user_collection(mongo_client, guild_id).await;
 
     get_all_docs(&user_col).await
+}
+
+#[instrument(skip_all, fields(guild_id, user_id))]
+pub async fn get_user(
+    mongo_client: &'_ Client,
+    guild_id: GuildId,
+    user_id: UserId,
+) -> Result<Option<User>, mongodb::error::Error> {
+    debug!("Attempting to get user: {}", user_id);
+    let user_col = get_user_collection(mongo_client, guild_id).await;
+    user_col
+        .find_one(
+            doc! {"discord_id": TryInto::<i64>::try_into(user_id).unwrap()},
+            None,
+        )
+        .await
+}
+
+pub async fn get_user_from_col(
+    user_col: &Collection<User>,
+    user_id: UserId,
+) -> Result<Option<User>, mongodb::error::Error> {
+    user_col
+        .find_one(
+            doc! {"discord_id": TryInto::<i64>::try_into(user_id).unwrap()},
+            None,
+        )
+        .await
+}
+
+pub async fn update_user<'a>(
+    mongo_client: &'a Client,
+    guild_id: GuildId,
+    filter: Document,
+    update: Document,
+) -> Result<(), mongodb::error::Error> {
+    let mut session = mongo_client.start_session(None).await?;
+
+    session
+        .with_transaction(
+            (&filter, &update),
+            |session, (filter, update)| {
+                async move {
+                    let user_col = get_user_collection(&session.client(), guild_id).await;
+
+                    user_col
+                        .update_one_with_session(filter.clone(), update.clone(), None, session)
+                        .await
+                }
+                .boxed()
+            },
+            None,
+        )
+        .await?;
+
+    Ok(())
+}
+
+#[instrument(skip(mongo_client))]
+pub async fn give_user_money<'a>(
+    mongo_client: &'a Client,
+    guild_id: GuildId,
+    user_id: UserId,
+    amount: i32,
+) -> Result<(), mongodb::error::Error> {
+    let mut session = mongo_client.start_session(None).await?;
+
+    session
+        .with_transaction(
+            (),
+            |session, _| {
+                async move {
+                    debug!("Attempting to give user {}, {} money", user_id, amount);
+                    let user_col = get_user_collection(&session.client(), guild_id).await;
+
+                    user_col
+                        .update_one_with_session(
+                            doc! { "discord_id": TryInto::<i64>::try_into(user_id).unwrap() },
+                            doc! {"$inc": doc! {"vbucks": amount}},
+                            None,
+                            session,
+                        )
+                        .await
+                }
+                .boxed()
+            },
+            None,
+        )
+        .await?;
+
+    Ok(())
 }
