@@ -3,13 +3,16 @@ mod custom_types;
 mod events;
 mod logging;
 mod mongo;
+mod utils;
+
+use std::sync::Arc;
 
 use mongodb::Database;
 use poise::serenity_prelude::{self as serenity, GuildId};
 use poise::Command;
 use tokio::sync::Mutex;
 
-use custom_types::command::{Data, Error};
+use custom_types::command::{Data, Error, JohnsonDBHandle};
 use events::Handler;
 
 #[allow(dead_code)]
@@ -23,7 +26,7 @@ impl<'a> CommandRegistering {
         &self,
         ctx: &serenity::Context,
         commands: &[Command<Data, Error>],
-        j_handle: Database,
+        j_handle: Arc<Mutex<Database>>,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         //
         match self {
@@ -31,7 +34,7 @@ impl<'a> CommandRegistering {
             CommandRegistering::Global => {
                 poise::builtins::register_globally(ctx, commands).await?;
                 Ok(Data {
-                    johnson_handle: Mutex::new(j_handle),
+                    johnson_handle: j_handle,
                 })
             }
             // Register commands for every provided guild
@@ -41,7 +44,7 @@ impl<'a> CommandRegistering {
                     poise::builtins::register_in_guild(ctx, commands, *guild).await?;
                 }
                 Ok(Data {
-                    johnson_handle: Mutex::new(j_handle),
+                    johnson_handle: j_handle,
                 })
             }
         }
@@ -65,9 +68,12 @@ async fn main() {
     // MongoDB setup
     let mongo_host = std::env::var("DISCORD_HOST")
         .expect("Johnson should be able to find MONGO_HOST environment var");
-    let client = mongo::receive_client(&mongo_host)
+    let mongo_client = mongo::receive_client(&mongo_host)
         .await
         .expect("Johnson should be able to get MongoDB client");
+
+    let db_handle = Arc::new(Mutex::new(mongo_client.database("Johnson")));
+    let poise_db_handle = Arc::clone(&db_handle);
 
     // Set register type
     let registering = CommandRegistering::ByGuild(vec![GuildId::new(427299383474782208)]);
@@ -80,11 +86,7 @@ async fn main() {
             // Requires a pin that holds a future
             Box::pin(async move {
                 registering
-                    .register(
-                        ctx,
-                        &framework.options().commands,
-                        client.database("Johnson"),
-                    )
+                    .register(ctx, &framework.options().commands, poise_db_handle)
                     .await
             })
         })
@@ -96,6 +98,12 @@ async fn main() {
         .event_handler(Handler)
         .await
         .expect("Client should be built correctly");
+
+    let mut data = client.data.write().await;
+    data.insert::<JohnsonDBHandle>(Arc::clone(&db_handle));
+
+    // Drop the lock and the borrow of client
+    drop(data);
 
     // Start client
     client.start().await.expect("Client error");

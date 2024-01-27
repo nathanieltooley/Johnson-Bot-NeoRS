@@ -7,13 +7,13 @@ use mongodb::{
 use poise::serenity_prelude::GuildId;
 use serde::de::DeserializeOwned;
 use tokio::sync::{Mutex, MutexGuard};
+use tracing_subscriber::registry::Data;
 
-use crate::custom_types::{command::Context, mongo_schema::User};
+use crate::custom_types::mongo_schema::User;
 pub async fn receive_client(mongo_uri: &str) -> Result<Client, mongodb::error::Error> {
     let mut client_options = ClientOptions::parse(mongo_uri).await?;
     client_options.app_name = Some("Johnson Bot RS".to_string());
 
-    // Unwrap for now
     Client::with_options(client_options)
 }
 
@@ -37,24 +37,14 @@ where
 
 /// Returns the users of a given server in the DB, or an error
 ///
-/// The function takes in the command's context and attempts to lock the DB handle.
+/// This function requires a MutexGuard and will not drop it until the end of the function
 ///
-/// This function will yield until it gets the lock
-///
-/// ```
-/// for user in get_users(&ctx).await? {
-///      debug!("User: {:?}", user);
-/// }
-/// ```
-pub async fn get_users<'a>(ctx: &'a Context<'_>) -> Result<Vec<User>, mongodb::error::Error> {
-    let g_id = ctx
-        .guild_id()
-        .expect("Johnson should be called within a guild");
-
-    let handle = ctx.data().johnson_handle.lock().await;
-
+pub async fn get_users<'a>(
+    guild_id: GuildId,
+    handle: MutexGuard<'_, Database>,
+) -> Result<Vec<User>, mongodb::error::Error> {
     // Give a reference to a MutexGuard rather than the guard so that we keep the guard
     // thus making sure this collection will not change until we grab all the users
-    let user_col = get_user_collection(&handle, g_id).await;
+    let user_col = get_user_collection(&handle, guild_id).await;
     get_all_docs(&user_col).await
 }
