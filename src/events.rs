@@ -1,4 +1,5 @@
 use poise::async_trait;
+use poise::serenity_prelude::model::guild;
 use poise::serenity_prelude::{Context, EventHandler, Message, Ready};
 
 use tracing::{debug, error, info, instrument};
@@ -17,22 +18,19 @@ impl EventHandler for Handler {
     #[instrument(skip_all)]
     async fn message(&self, ctx: Context, message: Message) {
         if let Some(guild_id) = message.guild_id {
-            let users = mongo::get_users(
-                ctx.data.read().await.get::<DataMongoClient>().unwrap(),
+            if let Err(e) = mongo::give_user_money(
+                &ctx.data
+                    .read()
+                    .await
+                    .get::<DataMongoClient>()
+                    .expect("Johnson should have value mongo client in context"),
                 guild_id,
+                message.author.id,
+                5,
             )
-            .await;
-
-            // Print out the values if it succeeded
-            match users {
-                Ok(users) => {
-                    for user in users {
-                        debug!("User: {:?}", user);
-                    }
-                }
-                Err(e) => {
-                    error!("{}", e);
-                }
+            .await
+            {
+                error!("Error occurred during message income: {:?}", e);
             }
         }
     }
