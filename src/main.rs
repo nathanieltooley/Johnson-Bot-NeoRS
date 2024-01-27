@@ -3,7 +3,6 @@ mod custom_types;
 mod events;
 mod logging;
 mod mongo;
-mod utils;
 
 use std::sync::Arc;
 
@@ -12,7 +11,7 @@ use poise::serenity_prelude::{self as serenity, GuildId};
 use poise::Command;
 use tokio::sync::Mutex;
 
-use custom_types::command::{Data, Error, JohnsonDBHandle};
+use custom_types::command::{Data, DataMongoClient, Error};
 use events::Handler;
 use tracing::info;
 
@@ -103,7 +102,7 @@ async fn main() {
         .expect("Client should be built correctly");
 
     let mut data = client.data.write().await;
-    data.insert::<JohnsonDBHandle>(Arc::clone(&db_handle));
+    data.insert::<DataMongoClient>(mongo_client);
 
     // Drop the lock and the borrow of client
     drop(data);

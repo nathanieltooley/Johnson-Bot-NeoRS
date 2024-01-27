@@ -3,7 +3,7 @@ use poise::serenity_prelude::{Context, EventHandler, Message, Ready};
 
 use tracing::{debug, error, info, instrument};
 
-use crate::custom_types::command::{DBInfo, JohnsonDBHandle};
+use crate::custom_types::command::DataMongoClient;
 use crate::mongo;
 pub struct Handler;
 
@@ -17,7 +17,11 @@ impl EventHandler for Handler {
     #[instrument(skip_all)]
     async fn message(&self, ctx: Context, message: Message) {
         if let Some(guild_id) = message.guild_id {
-            let users = mongo::get_users(DBInfo::Event(&ctx, guild_id)).await;
+            let users = mongo::get_users(
+                ctx.data.read().await.get::<DataMongoClient>().unwrap(),
+                guild_id,
+            )
+            .await;
 
             // Print out the values if it succeeded
             match users {

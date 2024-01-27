@@ -1,5 +1,5 @@
 pub mod command {
-    use mongodb::Database;
+    use mongodb::{Client, Database};
     use poise::serenity_prelude::{prelude::TypeMapKey, GuildId};
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -19,17 +19,10 @@ pub mod command {
     // Poise context constructed with custom Data and Error types
     pub type Context<'a> = poise::Context<'a, Data, Error>;
 
-    pub struct JohnsonDBHandle;
+    pub struct DataMongoClient;
 
-    impl TypeMapKey for JohnsonDBHandle {
-        type Value = Arc<Mutex<Database>>;
-    }
-
-    /// This enum helps streamline the use of getting DB information by
-    /// handling all the code for acquiring handles and locks inside MongoDB helper functions
-    pub enum DBInfo<'a> {
-        PoiseContext(&'a Context<'a>),
-        Event(&'a poise::serenity_prelude::Context, GuildId),
+    impl TypeMapKey for DataMongoClient {
+        type Value = Client;
     }
 }
 
