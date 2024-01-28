@@ -29,9 +29,11 @@ pub mod mongo_schema {
         pub name: String,
         pub discord_id: UserId,
         pub date_created: DateTime,
-        pub vbucks: u32,
-        pub exp: u32,
-        pub level: u16,
+        // I would use unsigned ints here but the Integer type
+        // in a mongodb server is i64
+        pub vbucks: i64,
+        pub exp: i64,
+        pub level: i64,
         pub slur_count: Option<Document>,
         pub inventory: Option<Vec<Document>>,
         pub stroke_count: Option<u32>,

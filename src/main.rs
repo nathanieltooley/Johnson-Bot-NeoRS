@@ -3,6 +3,7 @@ mod custom_types;
 mod events;
 mod logging;
 mod mongo;
+mod utils;
 
 use std::sync::Arc;
 

@@ -4,7 +4,7 @@ use poise::serenity_prelude::{Context, EventHandler, Message, Ready};
 use tracing::{debug, error, info, instrument};
 
 use crate::custom_types::command::DataMongoClient;
-use crate::mongo;
+use crate::mongo::{self, validate_user_exp};
 pub struct Handler;
 
 #[async_trait]
@@ -33,6 +33,23 @@ impl EventHandler for Handler {
             .await
             {
                 error!("Error occurred during message income: {:?}", e);
+            }
+
+            let user_info = mongo::get_user(
+                ctx.data.read().await.get::<DataMongoClient>().unwrap(),
+                guild_id,
+                message.author.id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+            // Give EXP
+            debug!("{}", mongo::level_to_exp(user_info.level));
+            debug!("{}", mongo::exp_to_level(user_info.exp));
+
+            if !validate_user_exp(&user_info) {
+                debug!("User {}'s EXP and LEVEL stats don't match!", user_info.name);
             }
         }
     }
