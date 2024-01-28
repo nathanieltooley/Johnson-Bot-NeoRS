@@ -1,5 +1,4 @@
 use crate::custom_types::command::{Context, Error};
-use crate::mongo::get_users;
 use tracing::{debug, info, instrument};
 
 #[poise::command(slash_command, prefix_command)]

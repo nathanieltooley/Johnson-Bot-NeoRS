@@ -1,18 +1,11 @@
 pub mod command {
     use mongodb::{Client, Database};
     use poise::serenity_prelude::{prelude::TypeMapKey, GuildId};
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
 
     #[derive(Debug)]
     // Custom data to send between commands
     pub struct Data {
-        // This has to be an Arc since the base Serenity Context is separate from this context
-        // but both need to be able to lock each other from the DB
-        //
-        // Not using an Arc would mean I would most likely have to have two different DB handles
-        // which defeats the purpose of avoiding data races
-        pub johnson_handle: Arc<Mutex<Database>>,
+        pub johnson_handle: Client,
     }
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
     pub type Error = Box<dyn std::error::Error + Send + Sync>;

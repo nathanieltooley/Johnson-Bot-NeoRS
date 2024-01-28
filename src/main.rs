@@ -6,7 +6,7 @@ mod mongo;
 
 use std::sync::Arc;
 
-use mongodb::Database;
+use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GuildId};
 use poise::Command;
 use tokio::sync::Mutex;
@@ -26,7 +26,7 @@ impl<'a> CommandRegistering {
         &self,
         ctx: &serenity::Context,
         commands: &[Command<Data, Error>],
-        j_handle: Arc<Mutex<Database>>,
+        j_handle: Client,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         //
         match self {
@@ -74,12 +74,10 @@ async fn main() {
 
     info!("Mongo data successfully initialized");
 
-    let db_handle = Arc::new(Mutex::new(mongo_client.database("Johnson")));
-    let poise_db_handle = Arc::clone(&db_handle);
-
     // Set register type
     let registering = CommandRegistering::ByGuild(vec![GuildId::new(427299383474782208)]);
 
+    let context_client = mongo_client.clone();
     // Build framework
     let framework = poise::Framework::builder()
         .options(opts)
@@ -88,7 +86,7 @@ async fn main() {
             // Requires a pin that holds a future
             Box::pin(async move {
                 registering
-                    .register(ctx, &framework.options().commands, poise_db_handle)
+                    .register(ctx, &framework.options().commands, context_client)
                     .await
             })
         })
@@ -100,6 +98,8 @@ async fn main() {
         .event_handler(Handler)
         .await
         .expect("Client should be built correctly");
+
+    info!("Client has been built successfully!");
 
     let mut data = client.data.write().await;
     data.insert::<DataMongoClient>(mongo_client);

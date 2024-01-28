@@ -1,5 +1,4 @@
 use poise::async_trait;
-use poise::serenity_prelude::model::guild;
 use poise::serenity_prelude::{Context, EventHandler, Message, Ready};
 
 use tracing::{debug, error, info, instrument};
@@ -18,8 +17,11 @@ impl EventHandler for Handler {
     #[instrument(skip_all)]
     async fn message(&self, ctx: Context, message: Message) {
         if let Some(guild_id) = message.guild_id {
+            // Give money
             if let Err(e) = mongo::give_user_money(
-                &ctx.data
+                // Unfortunately this is the best way of getting the client
+                // cause of RwLock shenanigans
+                ctx.data
                     .read()
                     .await
                     .get::<DataMongoClient>()

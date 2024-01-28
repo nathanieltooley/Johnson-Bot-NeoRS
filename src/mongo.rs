@@ -74,34 +74,6 @@ pub async fn get_user_from_col(
         .await
 }
 
-pub async fn update_user<'a>(
-    mongo_client: &'a Client,
-    guild_id: GuildId,
-    filter: Document,
-    update: Document,
-) -> Result<(), mongodb::error::Error> {
-    let mut session = mongo_client.start_session(None).await?;
-
-    session
-        .with_transaction(
-            (&filter, &update),
-            |session, (filter, update)| {
-                async move {
-                    let user_col = get_user_collection(&session.client(), guild_id).await;
-
-                    user_col
-                        .update_one_with_session(filter.clone(), update.clone(), None, session)
-                        .await
-                }
-                .boxed()
-            },
-            None,
-        )
-        .await?;
-
-    Ok(())
-}
-
 #[instrument(skip(mongo_client))]
 pub async fn give_user_money<'a>(
     mongo_client: &'a Client,
@@ -118,11 +90,12 @@ pub async fn give_user_money<'a>(
                 async move {
                     debug!("Attempting to give user {}, {} money", user_id, amount);
                     let user_col = get_user_collection(&session.client(), guild_id).await;
+                    let user_id_i64: i64 = user_id.into();
 
                     user_col
                         .update_one_with_session(
-                            doc! { "discord_id": TryInto::<i64>::try_into(user_id).unwrap() },
-                            doc! {"$inc": doc! {"vbucks": amount}},
+                            doc! { "discord_id": user_id_i64 },
+                            doc! { "$inc": doc! {"vbucks": amount} },
                             None,
                             session,
                         )
