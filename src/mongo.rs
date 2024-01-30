@@ -114,37 +114,44 @@ async fn update_user_session(
     Ok(())
 }
 
-#[instrument(skip(mongo_client))]
+#[instrument(skip(coll))]
 pub async fn give_user_money<'a>(
-    mongo_client: &'a Client,
+    coll: &Collection<User>,
     guild_id: GuildId,
     user_id: UserId,
     amount: i64,
 ) -> Result<(), mongodb::error::Error> {
     debug!("Attempting to give user {}, {} money", user_id, amount);
-    update_user_session(
-        mongo_client,
-        guild_id,
-        user_id,
+
+    let user_id: i64 = user_id.into();
+
+    coll.update_one(
+        doc! {"discord_id": user_id},
         doc! {"$inc": doc! {"vbucks": amount}},
+        None,
     )
-    .await
+    .await?;
+
+    Ok(())
 }
 
 pub async fn set_user_money<'a>(
-    mongo_client: &'_ Client,
-    guild_id: GuildId,
+    coll: &Collection<User>,
     user_id: UserId,
     amount: i64,
 ) -> Result<(), mongodb::error::Error> {
     debug!("Attemping to set user {}'s money to {}", user_id, amount);
-    update_user_session(
-        mongo_client,
-        guild_id,
-        user_id,
+
+    let user_id: i64 = user_id.into();
+
+    coll.update_one(
+        doc! {"discord_id": user_id},
         doc! {"$set": doc! {"vbucks": amount}},
+        None,
     )
-    .await
+    .await?;
+
+    Ok(())
 }
 
 pub fn level_to_exp(l: i64) -> i64 {
