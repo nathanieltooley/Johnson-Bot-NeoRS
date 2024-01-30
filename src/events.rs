@@ -3,8 +3,7 @@ use poise::serenity_prelude::{Context, EventHandler, Message, Ready};
 
 use tracing::{debug, error, info, instrument};
 
-use crate::custom_types::command::DataMongoClient;
-use crate::mongo::{self, validate_user_exp};
+use crate::mongo::{self, validate_user_exp, ContextWrapper};
 pub struct Handler;
 
 #[async_trait]
@@ -17,32 +16,26 @@ impl EventHandler for Handler {
     #[instrument(skip_all)]
     async fn message(&self, ctx: Context, message: Message) {
         if let Some(guild_id) = message.guild_id {
+            let db_helper = ContextWrapper::new_classic(&ctx, guild_id);
+
             // Give money
-            if let Err(e) = mongo::give_user_money(
-                // Unfortunately this is the best way of getting the client
-                // cause of RwLock shenanigans
-                ctx.data
-                    .read()
-                    .await
-                    .get::<DataMongoClient>()
-                    .expect("Johnson should have value mongo client in context"),
-                guild_id,
-                message.author.id,
-                5,
-            )
-            .await
-            {
+            if let Err(e) = db_helper.give_user_money(message.author.id, 5).await {
                 error!("Error occurred during message income: {:?}", e);
             }
 
-            let user_info = mongo::get_user(
-                ctx.data.read().await.get::<DataMongoClient>().unwrap(),
-                guild_id,
-                message.author.id,
-            )
-            .await
-            .unwrap()
-            .unwrap();
+            // TODO: Add a check at the beginning of this function that creates a users in the DB
+            // if they don't have an entry
+            let get_user_result = db_helper.get_user(message.author.id).await;
+
+            if let Err(e) = get_user_result {
+                error!("Error occured when trying to get user info: {:?}", e);
+                return;
+            }
+
+            // Panic:
+            // This would only panic if we did not have a user in the DB
+            // since we return early if there is an error with Mongo
+            let user_info = get_user_result.unwrap().unwrap();
 
             // Give EXP
             debug!("{}", mongo::level_to_exp(user_info.level));
