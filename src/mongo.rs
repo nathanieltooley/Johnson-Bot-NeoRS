@@ -1,22 +1,93 @@
 use std::f64::consts::E;
 
-use futures::{stream::TryStreamExt, FutureExt};
+use futures::{stream::TryStreamExt, Future, FutureExt};
 use mongodb::{
-    bson::{doc, oid::ObjectId, Document},
+    bson::{doc, Document},
     options::ClientOptions,
-    Client, ClientSession, Collection, Database,
+    Client, Collection,
 };
-use poise::serenity_prelude::{GuildId, UserId};
+use poise::serenity_prelude::{Context, Guild, GuildId, UserId};
 use serde::de::DeserializeOwned;
 use tracing::{debug, instrument};
+use tracing_subscriber::registry::Data;
 
-use crate::{custom_types::mongo_schema::User, utils};
+use crate::custom_types::command::Context as JContext;
+use crate::custom_types::{command::DataMongoClient, mongo_schema::User};
+use crate::utils;
 
 static DB_NAME: &str = "Johnson";
 
-static XP_MULTIPLIER: f64 = 15566f64;
-static XP_TRANSLATION: f64 = 15000f64;
-static EXPO_MULTIPLIER: f64 = 0.0415;
+const XP_MULTIPLIER: f64 = 15566f64;
+const XP_TRANSLATION: f64 = 15000f64;
+const EXPO_MULTIPLIER: f64 = 0.0415;
+
+pub enum ContextType<'a> {
+    Slash(JContext<'a>),
+    Classic(&'a Context, GuildId),
+}
+
+/// This struct is to be a wrapper around both types of context
+/// so that they may access MongoDB helpers more efficiently.
+///
+/// This is mainly for the older Serenity context which requires a lot of code to
+/// access context data.
+pub struct ContextWrapper<'context> {
+    ctx: ContextType<'context>,
+}
+
+// 'context is the lifetime of the context passed in
+impl<'context> ContextWrapper<'context> {
+    async fn get_client(&self) -> Client {
+        match self.ctx {
+            ContextType::Classic(ctx, _) => {
+                let read = ctx.data.read().await;
+                let client = read
+                    .get::<DataMongoClient>()
+                    .expect("Johnson should have a DataMongoClient set in context");
+
+                // We have to clone this, otherwise there will be a fit from the RwLock
+                client.clone()
+            }
+            ContextType::Slash(ctx) => ctx.data().johnson_handle.clone(),
+        }
+    }
+
+    fn get_guild_id(&self) -> GuildId {
+        match self.ctx {
+            ContextType::Slash(ctx) => ctx
+                .guild_id()
+                .expect("This method should never be called inside of DMs"),
+            ContextType::Classic(_, gid) => gid,
+        }
+    }
+
+    pub fn new_classic<'a>(ctx: &'context Context, guild_id: GuildId) -> Self {
+        ContextWrapper {
+            ctx: ContextType::Classic(ctx, guild_id),
+        }
+    }
+
+    pub fn new_slash(ctx: JContext<'context>) -> Self {
+        ContextWrapper {
+            ctx: ContextType::Slash(ctx),
+        }
+    }
+
+    pub async fn get_user(&self, user_id: UserId) -> Result<Option<User>, mongodb::error::Error> {
+        get_user(&self.get_client().await, self.get_guild_id(), user_id).await
+    }
+
+    pub async fn give_user_money(
+        &self,
+        user_id: UserId,
+        amount: i64,
+    ) -> Result<(), mongodb::error::Error> {
+        let guild_id = self.get_guild_id();
+        let user_col = get_user_collection(&self.get_client().await, guild_id).await;
+
+        give_user_money(&user_col, guild_id, user_id, amount).await
+    }
+}
 
 #[instrument]
 pub async fn receive_client(mongo_uri: &str) -> Result<Client, mongodb::error::Error> {
@@ -26,7 +97,7 @@ pub async fn receive_client(mongo_uri: &str) -> Result<Client, mongodb::error::E
     Client::with_options(client_options)
 }
 
-async fn get_user_collection(mongo_client: &Client, guild_id: GuildId) -> Collection<User> {
+pub async fn get_user_collection(mongo_client: &Client, guild_id: GuildId) -> Collection<User> {
     mongo_client
         .database(DB_NAME)
         .collection(&guild_id.to_string())
