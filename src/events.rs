@@ -37,12 +37,20 @@ impl EventHandler for Handler {
             // since we return early if there is an error with Mongo
             let user_info = get_user_result.unwrap().unwrap();
 
-            // Give EXP
-            debug!("{}", mongo::level_to_exp(user_info.level));
-            debug!("{}", mongo::exp_to_level(user_info.exp));
+            let actual_level = user_info.level;
 
-            if !validate_user_exp(&user_info) {
-                debug!("User {}'s EXP and LEVEL stats don't match!", user_info.name);
+            match db_helper.give_user_exp(message.author.id, 200).await {
+                Ok(res) => {
+                    if let Some(new_level) = res {
+                        debug!(
+                            "User {}'s level has changed from {} to {}!",
+                            user_info.name, actual_level, new_level
+                        );
+                    }
+                }
+                Err(e) => {
+                    error!("Error when attempting to give user exp: {:?}", e);
+                }
             }
         }
     }
