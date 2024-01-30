@@ -5,12 +5,9 @@ mod logging;
 mod mongo;
 mod utils;
 
-use std::sync::Arc;
-
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GuildId};
 use poise::Command;
-use tokio::sync::Mutex;
 
 use custom_types::command::{Data, DataMongoClient, Error};
 use events::Handler;
