@@ -1,15 +1,14 @@
 use std::f64::consts::E;
 
-use futures::{stream::TryStreamExt, Future, FutureExt};
+use futures::{stream::TryStreamExt, FutureExt};
 use mongodb::{
     bson::{doc, Document},
     options::ClientOptions,
     Client, Collection,
 };
-use poise::serenity_prelude::{Context, Guild, GuildId, UserId};
+use poise::serenity_prelude::{Context, GuildId, UserId};
 use serde::de::DeserializeOwned;
 use tracing::{debug, instrument};
-use tracing_subscriber::registry::Data;
 
 use crate::custom_types::command::Context as JContext;
 use crate::custom_types::{command::DataMongoClient, mongo_schema::User};
@@ -86,6 +85,69 @@ impl<'context> ContextWrapper<'context> {
         let user_col = get_user_collection(&self.get_client().await, guild_id).await;
 
         give_user_money(&user_col, guild_id, user_id, amount).await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn give_user_exp(
+        &self,
+        user_id: UserId,
+        amount: i64,
+    ) -> Result<Option<i64>, mongodb::error::Error> {
+        let client = self.get_client().await;
+        let user_col = get_user_collection(&client, self.get_guild_id()).await;
+        let mut session = client.start_session(None).await?;
+
+        // we do all of this in a transaction because we have to check the exp
+        // and level multiple times
+        session
+            .with_transaction(
+                &user_col,
+                |session, coll| {
+                    async move {
+                        let user_info = self.get_user(user_id).await?;
+                        let mut user = user_info.unwrap();
+
+                        let old_exp = user.exp;
+                        let old_level = user.level;
+
+                        let user_id64: i64 = user_id.into();
+
+                        // If this person had an exp based on the old algorithm,
+                        // reset their exp according to their level
+                        if !validate_user_exp(&user) {
+                            debug!("User {}'s EXP and LEVEL stats don't match!", user.name);
+                            user.exp = level_to_exp(user.level);
+                            debug!("Reset user exp to: {}", user.exp);
+                        }
+
+                        // calculate their new exp and level values before updating them
+                        let new_xp = user.exp + amount;
+                        let level = exp_to_level(new_xp);
+
+                        coll.update_one_with_session(
+                            doc! {"discord_id": user_id64},
+                            // We could remove the $inc call and just do two sets but not that important
+                            doc! {"$set": doc! {"level": level, "exp": new_xp}},
+                            None,
+                            session,
+                        )
+                        .await?;
+
+                        debug!("User exp changed from {} -> {}", old_exp, new_xp);
+
+                        // If the user's level changed because of this function
+                        // return the new level
+                        if level != old_level {
+                            Ok(Some(level))
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                    .boxed()
+                },
+                None,
+            )
+            .await
     }
 }
 
@@ -245,9 +307,13 @@ pub fn exp_to_level(exp: i64) -> i64 {
 
 pub fn validate_user_exp(user: &User) -> bool {
     let level = user.level;
-    let exp = user.exp;
+    let next_level = level + 1;
 
-    return level_to_exp(level) == exp;
+    let min_exp = level_to_exp(level);
+    let exp = user.exp;
+    let next_exp = level_to_exp(next_level);
+
+    return exp >= min_exp && exp <= next_exp;
 }
 
 // TODO: Write custom transaction that will check for level changes while changing exp
