@@ -906,6 +906,7 @@ dependencies = [
  "futures",
  "mongodb",
  "poise",
+ "rand",
  "serde",
  "tokio",
  "tracing",
