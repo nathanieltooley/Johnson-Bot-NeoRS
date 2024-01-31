@@ -254,16 +254,19 @@ pub async fn give_user_money<'a>(
     user_id: UserId,
     amount: i64,
 ) -> Result<(), mongodb::error::Error> {
-    debug!("Attempting to give user {}, {} money", user_id, amount);
-
     let user_id: i64 = user_id.into();
 
-    coll.update_one(
-        doc! {"discord_id": user_id},
-        doc! {"$inc": doc! {"vbucks": amount}},
-        None,
-    )
-    .await?;
+    let user_info = coll
+        .find_one_and_update(
+            doc! {"discord_id": user_id},
+            doc! {"$inc": doc! {"vbucks": amount}},
+            None,
+        )
+        .await?;
+
+    let user = user_info.expect("User should have been created before calling method");
+
+    debug!("User money is now {}", user.vbucks);
 
     Ok(())
 }
