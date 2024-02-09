@@ -29,9 +29,28 @@ impl EventHandler for Handler {
     #[instrument(skip_all)]
     async fn message(&self, ctx: Context, message: Message) {
         if let Some(guild_id) = message.guild_id {
+            // Ignore bot messages
+            if message.author.bot {
+                return;
+            }
+
             let db_helper = ContextWrapper::new_classic(&ctx, guild_id);
 
-            // Give money
+            let user_id = message.author.id;
+            // Try to get the nickname of the author
+            // otherwise default to their username
+            let user_nick = message
+                .author
+                .nick_in(&ctx, guild_id)
+                .await
+                .unwrap_or(message.author.name.clone());
+
+            if let Err(e) = db_helper.create_user_if_none(user_id, &user_nick).await {
+                error!("Error occuring when attempting to create new user: {:?}", e);
+                // return here because we can't do the other operations without a user in the DB
+                return;
+            }
+
             if let Err(e) = db_helper
                 .give_user_money(message.author.id, money_rand())
                 .await
@@ -39,8 +58,6 @@ impl EventHandler for Handler {
                 error!("Error occurred during message income: {:?}", e);
             }
 
-            // TODO: Add a check at the beginning of this function that creates a users in the DB
-            // if they don't have an entry
             let get_user_result = db_helper.get_user(message.author.id).await;
 
             if let Err(e) = get_user_result {
@@ -62,11 +79,25 @@ impl EventHandler for Handler {
                 .await
             {
                 Ok(res) => {
+                    // User has leveled up!
                     if let Some(new_level) = res {
                         debug!(
                             "User {}'s level has changed from {} to {}!",
                             user_info.name, actual_level, new_level
                         );
+
+                        if let Err(e) = message
+                            .reply_mention(
+                                &ctx,
+                                format!("You leveled up from {} to {}!", actual_level, new_level),
+                            )
+                            .await
+                        {
+                            error!(
+                                "Error when trying to send message to {}: {:?}",
+                                user_info.name, e
+                            );
+                        }
                     }
                 }
                 Err(e) => {

@@ -2,7 +2,7 @@ use std::f64::consts::E;
 
 use futures::{stream::TryStreamExt, FutureExt};
 use mongodb::{
-    bson::{doc, Document},
+    bson::{doc, DateTime, Document},
     options::ClientOptions,
     Client, Collection,
 };
@@ -148,6 +148,22 @@ impl<'context> ContextWrapper<'context> {
                 None,
             )
             .await
+    }
+
+    pub async fn create_user_if_none(
+        &self,
+        user_id: UserId,
+        user_nick: &str,
+    ) -> Result<(), mongodb::error::Error> {
+        let user_col = get_user_collection(&self.get_client().await, self.get_guild_id()).await;
+
+        if let None = self.get_user(user_id).await? {
+            create_new_user(&user_col, user_id, user_nick).await?;
+            debug!("New user created! {}:{}", user_id, user_nick);
+            Ok(())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -337,4 +353,25 @@ pub async fn set_user_exp<'a>(
     amount: i64,
 ) -> Result<bool, mongodb::error::Error> {
     todo!()
+}
+
+pub async fn create_new_user(
+    user_col: &Collection<User>,
+    user_id: UserId,
+    user_nick: &str,
+) -> Result<(), mongodb::error::Error> {
+    let def_user = User {
+        name: user_nick.to_string(),
+        discord_id: user_id,
+        date_created: DateTime::now(),
+        vbucks: 0,
+        exp: 0,
+        level: 0,
+        slur_count: None,
+        inventory: None,
+        stroke_count: None,
+    };
+
+    user_col.insert_one(def_user, None).await?;
+    Ok(())
 }
