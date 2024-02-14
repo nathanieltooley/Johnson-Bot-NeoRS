@@ -26,7 +26,6 @@ impl<'a> CommandRegistering {
         commands: &[Command<Data, Error>],
         j_handle: Client,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
-        //
         match self {
             // Register the commands globally
             CommandRegistering::Global => {
