@@ -362,7 +362,7 @@ pub async fn create_new_user(
 ) -> Result<(), mongodb::error::Error> {
     let def_user = User {
         name: user_nick.to_string(),
-        discord_id: user_id,
+        discord_id: user_id.into(),
         date_created: DateTime::now(),
         vbucks: 0,
         exp: 0,
