@@ -10,7 +10,7 @@ pub struct Handler;
 const MONEY_MIN: i64 = 5;
 const MONEY_MAX: i64 = 20;
 
-const EXP_PER_MESSAGE: i64 = 200;
+const EXP_PER_MESSAGE: i64 = 100;
 
 // Extract out the code for this logic since ThreadRNG is not thread safe
 fn money_rand() -> i64 {
