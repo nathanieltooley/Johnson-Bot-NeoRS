@@ -27,7 +27,7 @@ pub mod mongo_schema {
     #[derive(Debug, Serialize, Deserialize)]
     pub struct User {
         pub name: String,
-        pub discord_id: UserId,
+        pub discord_id: u64,
         pub date_created: DateTime,
         // I would use unsigned ints here but the Integer type
         // in a mongodb server is i64
