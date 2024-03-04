@@ -6,7 +6,7 @@ mod mongo;
 mod utils;
 
 use mongodb::Client;
-use poise::serenity_prelude::{self as serenity, GuildId};
+use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
 
 use custom_types::command::{Data, DataMongoClient, Error};
@@ -56,7 +56,9 @@ async fn main() {
     // Configuration
     let token =
         std::env::var("TOKEN").expect("Johnson should be able to find TOKEN environment var");
-    let intents = serenity::GatewayIntents::non_privileged();
+    let intents = serenity::GatewayIntents::non_privileged()
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
     let opts = poise::FrameworkOptions {
         commands: vec![commands::basic::ping()],
         ..Default::default()
