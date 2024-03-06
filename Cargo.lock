@@ -907,6 +907,7 @@ dependencies = [
  "mongodb",
  "poise",
  "rand",
+ "regex",
  "serde",
  "tokio",
  "tracing",

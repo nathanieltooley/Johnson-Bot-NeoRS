@@ -1,3 +1,4 @@
+mod checks;
 mod commands;
 mod custom_types;
 mod events;

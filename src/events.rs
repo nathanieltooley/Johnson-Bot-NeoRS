@@ -2,8 +2,10 @@ use poise::async_trait;
 use poise::serenity_prelude::{Context, EventHandler, GuildId, Message, Ready, Result};
 
 use rand::Rng;
+use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
+use crate::checks::slurs; //::contains_slur;
 use crate::mongo::ContextWrapper;
 use crate::utils::string::string_char_isspace;
 pub struct Handler;
@@ -103,62 +105,34 @@ async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
 async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<Option<Message>> {
     let message_content = message.content_safe(ctx).to_lowercase();
 
-    // TODO: Regexs?
-    for im in IM_VARIATIONS {
-        let im_index = message_content.find(im);
+    // To Future Me: Just plug this RegEx in on some website if you forget what it does
+    // shouldn't be too hard to remember
+    let re = Regex::new(r"(^|\b)(?P<im>[iI]['‘’]?m)(?P<message>.*[.,!?])?")
+        .expect("Invalid regex pattern");
 
-        if let Some(im_index) = im_index {
-            debug!("Im found");
-            // This shouldn't be a problem as im_index should never get high enough to cause an error
-            let pre_im_index: i32 = (im_index as i32) - 1;
+    let caps = re.captures(&message_content);
 
-            // Make sure that either the im is at the beginning or is after a space
-            // AND that the character right after it is a space as well
-            if (pre_im_index < 0
-                || string_char_isspace(&message_content, pre_im_index.try_into().unwrap()))
-                && string_char_isspace(&message_content, im_index + im.len())
-            {
-                // Split at Im
-                let split = message_content.split(im);
+    if let Some(mat) = caps {
+        let im_match = mat.name("im").unwrap();
 
-                // Grab the second part, after the Im
-                let im_contents: &str = split.collect::<Vec<&str>>()[1];
+        #[allow(unused_assignments)]
+        let mut reply = "";
 
-                // Search for a period
-                let period_index = im_contents.find('.').map_or_else(
-                    || None,
-                    |i| {
-                        if i < im_index {
-                            None
-                        } else {
-                            Some(i)
-                        }
-                    },
-                );
+        // If there is punctuation
+        if let Some(stop_match) = mat.name("message") {
+            reply = stop_match.as_str().trim();
 
-                // Short circuits so no need to worry about panicing
-                if period_index.is_some() && period_index.unwrap() > im_index {
-                    // If there is a period, we end the message there
-                    let full_message =
-                        format!("Hi{}, I'm Johnson!", &im_contents[0..period_index.unwrap()]);
-
-                    // Typing shenanigans
-                    // Converting Result<Message, Error> -> Result<Option<Message>, Error>
-                    return message
-                        .reply(ctx, full_message)
-                        .await
-                        .map_or_else(Err, |s| Ok(Some(s)));
-                } else {
-                    // If there is no period, we just take the rest of the message and reply
-                    let full_message = format!("Hi{}, I'm Johnson!", im_contents);
-
-                    return message
-                        .reply(ctx, full_message)
-                        .await
-                        .map_or_else(Err, |s| Ok(Some(s)));
-                }
-            }
+            // Trim off . or ,
+            reply = &reply[0..reply.len() - 1];
+        } else {
+            (_, reply) = message_content.split_at(im_match.end());
+            reply = reply.trim();
         }
+
+        return message
+            .reply(ctx, format!("Hi {}, I'm Johnson!", reply))
+            .await
+            .map_or_else(Err, |s| Ok(Some(s)));
     }
 
     Ok(None)
@@ -177,6 +151,10 @@ impl EventHandler for Handler {
         if let Some(guild_id) = message.guild_id {
             // Ignore bot messages
             if message.author.bot {
+                return;
+            }
+
+            if slurs::contains_slur(&message.content) {
                 return;
             }
 
