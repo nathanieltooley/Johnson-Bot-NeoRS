@@ -1,21 +1,29 @@
 pub mod command {
     use mongodb::{Client, Database};
     use poise::serenity_prelude::{prelude::TypeMapKey, GuildId};
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize, Clone)]
+    pub struct KeywordResponse {
+        kw: String,
+        response: String,
+    }
 
     #[derive(Debug)]
     // Custom data to send between commands
     pub struct Data {
         pub johnson_handle: Client,
+        pub kwr: Vec<KeywordResponse>,
     }
+
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
     pub type Error = Box<dyn std::error::Error + Send + Sync>;
     // Poise context constructed with custom Data and Error types
     pub type Context<'a> = poise::Context<'a, Data, Error>;
 
-    pub struct DataMongoClient;
-
-    impl TypeMapKey for DataMongoClient {
-        type Value = Client;
+    pub struct SerenityCtxData;
+    impl TypeMapKey for SerenityCtxData {
+        type Value = Data;
     }
 }
 
