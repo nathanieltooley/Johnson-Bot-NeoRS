@@ -6,13 +6,18 @@ mod logging;
 mod mongo;
 mod utils;
 
+use std::env;
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, Read};
+use std::path::Path;
+
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
 
-use custom_types::command::{Data, DataMongoClient, Error};
+use custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use events::Handler;
-use tracing::info;
+use tracing::{debug, error, info};
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -26,6 +31,7 @@ impl<'a> CommandRegistering {
         ctx: &serenity::Context,
         commands: &[Command<Data, Error>],
         j_handle: Client,
+        kwr: Vec<KeywordResponse>,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         match self {
             // Register the commands globally
@@ -33,6 +39,7 @@ impl<'a> CommandRegistering {
                 poise::builtins::register_globally(ctx, commands).await?;
                 Ok(Data {
                     johnson_handle: j_handle,
+                    kwr,
                 })
             }
             // Register commands for every provided guild
@@ -43,6 +50,7 @@ impl<'a> CommandRegistering {
                 }
                 Ok(Data {
                     johnson_handle: j_handle,
+                    kwr,
                 })
             }
         }
@@ -74,10 +82,36 @@ async fn main() {
 
     info!("Mongo data successfully initialized");
 
+    let working_dir = env::current_dir().unwrap();
+    let kwr_path = working_dir.join("cfg/kwr.json");
+    let kwr_file = File::open(&kwr_path);
+
+    debug!("kwr_path: {:?}", kwr_path);
+
+    let mut kw_responses: Vec<KeywordResponse> = vec![];
+
+    match kwr_file {
+        Ok(file) => {
+            let k_reader = BufReader::new(file);
+
+            kw_responses = serde_json::from_reader(k_reader).expect("KWR File is not correct json");
+        }
+        Err(e) => match e.kind() {
+            io::ErrorKind::NotFound => {
+                // If this can't work, somethings pretty wrong
+                fs::write(&kwr_path, b"{}").unwrap();
+            }
+            _ => {
+                error!("Could not read KWR File for reason: {:?}", e);
+            }
+        },
+    }
+
     // Set register type
     let registering = CommandRegistering::ByGuild(vec![GuildId::new(427299383474782208)]);
 
     let context_client = mongo_client.clone();
+    let context_kwr = kw_responses.clone();
     // Build framework
     let framework = poise::Framework::builder()
         .options(opts)
@@ -86,7 +120,12 @@ async fn main() {
             // Requires a pin that holds a future
             Box::pin(async move {
                 registering
-                    .register(ctx, &framework.options().commands, context_client)
+                    .register(
+                        ctx,
+                        &framework.options().commands,
+                        context_client,
+                        context_kwr,
+                    )
                     .await
             })
         })
@@ -102,7 +141,10 @@ async fn main() {
     info!("Client has been built successfully!");
 
     let mut data = client.data.write().await;
-    data.insert::<DataMongoClient>(mongo_client);
+    data.insert::<SerenityCtxData>(Data {
+        johnson_handle: mongo_client,
+        kwr: kw_responses,
+    });
 
     // Drop the lock and the borrow of client
     drop(data);
