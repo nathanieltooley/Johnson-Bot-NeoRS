@@ -5,17 +5,14 @@ use rand::Rng;
 use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
-use crate::checks::slurs; //::contains_slur;
+use crate::checks::slurs;
 use crate::mongo::ContextWrapper;
-use crate::utils::string::string_char_isspace;
 pub struct Handler;
 
 const MONEY_MIN: i64 = 5;
 const MONEY_MAX: i64 = 20;
 
 const EXP_PER_MESSAGE: i64 = 100;
-
-static IM_VARIATIONS: [&str; 4] = ["im", "i'm", "i‘m", "i’m"];
 
 // Extract out the code for this logic since ThreadRNG is not thread safe
 fn money_rand() -> i64 {
@@ -175,7 +172,6 @@ impl EventHandler for Handler {
                     }
                 }
             }
-
         }
     }
 }
