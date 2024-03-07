@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use tracing::{debug, instrument};
 
 use crate::custom_types::command::Context as JContext;
-use crate::custom_types::{command::DataMongoClient, mongo_schema::User};
+use crate::custom_types::{command::SerenityCtxData, mongo_schema::User};
 use crate::utils;
 
 static DB_NAME: &str = "Johnson";
@@ -40,12 +40,10 @@ impl<'context> ContextWrapper<'context> {
         match self.ctx {
             ContextType::Classic(ctx, _) => {
                 let read = ctx.data.read().await;
-                let client = read
-                    .get::<DataMongoClient>()
-                    .expect("Johnson should have a DataMongoClient set in context");
-
-                // We have to clone this, otherwise there will be a fit from the RwLock
-                client.clone()
+                read.get::<SerenityCtxData>()
+                    .expect("Johnson should have a SerenityCtxData set in context")
+                    .johnson_handle
+                    .clone()
             }
             ContextType::Slash(ctx) => ctx.data().johnson_handle.clone(),
         }
