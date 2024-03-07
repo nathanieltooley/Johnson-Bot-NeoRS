@@ -909,6 +909,7 @@ dependencies = [
  "rand",
  "regex",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-appender",
