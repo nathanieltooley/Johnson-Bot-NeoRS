@@ -6,6 +6,7 @@ use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
+use crate::custom_types::command::SerenityCtxData;
 use crate::mongo::ContextWrapper;
 pub struct Handler;
 
@@ -144,7 +145,6 @@ impl EventHandler for Handler {
 
     #[instrument(skip_all)]
     async fn message(&self, ctx: Context, message: Message) {
-        debug!(message.content);
         if let Some(guild_id) = message.guild_id {
             // Ignore bot messages
             if message.author.bot {
@@ -154,6 +154,10 @@ impl EventHandler for Handler {
             if slurs::contains_slur(&message.content) {
                 return;
             }
+
+            let read_lock = ctx.data.read().await;
+            let kw_responses = &read_lock.get::<SerenityCtxData>().unwrap().kwr;
+            debug!("{:?}", kw_responses);
 
             reward_messenger(guild_id, &ctx, &message).await;
             let result = dad_bot_response(&ctx, &message).await;
