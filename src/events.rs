@@ -159,7 +159,23 @@ impl EventHandler for Handler {
             }
 
             reward_messenger(guild_id, &ctx, &message).await;
-            dad_bot_response(&ctx, &message).await;
+            let result = dad_bot_response(&ctx, &message).await;
+
+            // Handle result of dad_bot_response
+            match result {
+                Err(e) => {
+                    error!(
+                        "Johnson bot failed when attempting to respond to I'm message: {:?}",
+                        e
+                    );
+                }
+                Ok(mes_opt) => {
+                    if let Some(mes) = mes_opt {
+                        info!("Johnson bot replied to I'm message with: {}", mes.content);
+                    }
+                }
+            }
+
         }
     }
 }
