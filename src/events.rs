@@ -6,7 +6,7 @@ use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
-use crate::custom_types::command::SerenityCtxData;
+use crate::custom_types::command::{KeywordResponse, SerenityCtxData};
 use crate::mongo::ContextWrapper;
 pub struct Handler;
 
@@ -21,6 +21,7 @@ fn money_rand() -> i64 {
 
     rng.gen_range(MONEY_MIN..MONEY_MAX)
 }
+
 #[instrument(skip_all, fields(guild_id, message=message.content))]
 async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
     let db_helper = ContextWrapper::new_classic(ctx, guild_id);
@@ -100,7 +101,7 @@ async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
 }
 
 #[instrument(skip_all, fields(message = message.content))]
-async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<Option<Message>> {
+async fn dad_bot_response(ctx: &Context, message: &Message) {
     let message_content = message.content_safe(ctx).to_lowercase();
 
     // To Future Me: Just plug this RegEx in on some website if you forget what it does
@@ -127,13 +128,50 @@ async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<Option<Mes
             reply = reply.trim();
         }
 
-        return message
+        match message
             .reply(ctx, format!("Hi {}, I'm Johnson!", reply))
             .await
-            .map_or_else(Err, |s| Ok(Some(s)));
+        {
+            Err(e) => {
+                error!(
+                    "Johnson bot failed when attempting to respond to I'm message: {:?}",
+                    e
+                );
+            }
+            Ok(m) => {
+                info!("Johnson bot replied to im message with {}", m.content);
+            }
+        }
     }
+}
 
-    Ok(None)
+#[instrument(skip_all)]
+async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordResponse]) {
+    for kwr in kwrs {
+        // no way to avoid recompiling the regex for every keyword
+        let kw_re = Regex::new(&format!(r"(^|\b)({})($|\>)", kwr.kw)).unwrap();
+        // let pos_isolated_word = message.content_safe(ctx).find(&format!(" {} ", kwr.kw));
+        // let pos_final_word = message.content_safe(ctx).find(&format!(" {}", kwr.kw));
+        //
+
+        // if pos_isolated_word.is_some() || pos_final_word.is_some() {
+        if kw_re.is_match(&message.content_safe(ctx)) {
+            match message.reply(ctx, &kwr.response).await {
+                Ok(m) => {
+                    info!(
+                        "Johnson Bot replied to keyword {}, with {}",
+                        kwr.kw, m.content
+                    )
+                }
+                Err(e) => {
+                    error!(
+                        "Johnson Bot could not reply to keyword, {}. Error: {:?}",
+                        kwr.kw, e
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -155,27 +193,17 @@ impl EventHandler for Handler {
                 return;
             }
 
-            let read_lock = ctx.data.read().await;
-            let kw_responses = &read_lock.get::<SerenityCtxData>().unwrap().kwr;
-            debug!("{:?}", kw_responses);
-
             reward_messenger(guild_id, &ctx, &message).await;
-            let result = dad_bot_response(&ctx, &message).await;
 
             // Handle result of dad_bot_response
-            match result {
-                Err(e) => {
-                    error!(
-                        "Johnson bot failed when attempting to respond to I'm message: {:?}",
-                        e
-                    );
-                }
-                Ok(mes_opt) => {
-                    if let Some(mes) = mes_opt {
-                        info!("Johnson bot replied to I'm message with: {}", mes.content);
-                    }
-                }
-            }
+            dad_bot_response(&ctx, &message).await;
+
+            let read_lock = ctx.data.read().await;
+            let kw_responses = &read_lock.get::<SerenityCtxData>().unwrap().kwr;
+
+            debug!("{:?}", kw_responses);
+
+            keyword_response(&ctx, &message, kw_responses).await;
         }
     }
 }
