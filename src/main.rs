@@ -88,24 +88,10 @@ async fn main() {
 
     debug!("kwr_path: {:?}", kwr_path);
 
-    let mut kw_responses: Vec<KeywordResponse> = vec![];
+    let k_reader = BufReader::new(kwr_file.expect("KWR File should exist and be readable"));
 
-    match kwr_file {
-        Ok(file) => {
-            let k_reader = BufReader::new(file);
-
-            kw_responses = serde_json::from_reader(k_reader).expect("KWR File is not correct json");
-        }
-        Err(e) => match e.kind() {
-            io::ErrorKind::NotFound => {
-                // If this can't work, somethings pretty wrong
-                fs::write(&kwr_path, b"{}").unwrap();
-            }
-            _ => {
-                error!("Could not read KWR File for reason: {:?}", e);
-            }
-        },
-    }
+    let kw_responses: Vec<KeywordResponse> =
+        serde_json::from_reader(k_reader).expect("KWR File is not correct json");
 
     // Set register type
     let registering = CommandRegistering::ByGuild(vec![GuildId::new(427299383474782208)]);
