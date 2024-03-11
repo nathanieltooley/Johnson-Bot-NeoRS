@@ -5,8 +5,8 @@ pub mod command {
 
     #[derive(Debug, Deserialize, Clone)]
     pub struct KeywordResponse {
-        kw: String,
-        response: String,
+        pub kw: String,
+        pub response: String,
     }
 
     #[derive(Debug)]
