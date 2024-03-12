@@ -1,6 +1,7 @@
 use poise::async_trait;
 use poise::serenity_prelude::{Context, EventHandler, GuildId, Message, Ready, Result};
 
+use rand::distributions::{Distribution, WeightedIndex};
 use rand::Rng;
 use regex::Regex;
 use tracing::{debug, error, info, instrument};
@@ -20,6 +21,39 @@ fn money_rand() -> i64 {
     let mut rng = rand::thread_rng();
 
     rng.gen_range(MONEY_MIN..MONEY_MAX)
+}
+
+fn single_keyword_regex(kw: &str) -> Regex {
+    Regex::new(&format!(r"(^|\b)({})($|\>)", kw)).unwrap()
+}
+
+fn multi_keyword_regex(kws: &Vec<String>) -> Regex {
+    let mut alternate_string = String::new();
+
+    for i in 0..kws.len() {
+        // Don't put the | symbol on last keyword
+        if i == kws.len() - 1 {
+            alternate_string.push_str(&kws[i]);
+            continue;
+        }
+
+        alternate_string.push_str(&format!("{}|", kws[i]))
+    }
+
+    Regex::new(&format!(r"(^|\b)({})($|\>)", alternate_string)).unwrap()
+}
+
+fn random_choice_unweighted(responses: &Vec<String>) -> &String {
+    let rand_index = rand::thread_rng().gen_range(0..responses.len());
+
+    &responses[rand_index]
+}
+
+fn random_choice_weighted<'a>(responses: &'a Vec<String>, weights: &Vec<f32>) -> &'a String {
+    // Only errors if len of weights is 0
+    let weighted_dist = WeightedIndex::new(weights).unwrap();
+
+    &responses[weighted_dist.sample(&mut rand::thread_rng())]
 }
 
 #[instrument(skip_all, fields(guild_id, message=message.content))]
@@ -148,26 +182,135 @@ async fn dad_bot_response(ctx: &Context, message: &Message) {
 #[instrument(skip_all)]
 async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordResponse]) {
     for kwr in kwrs {
-        // no way to avoid recompiling the regex for every keyword
-        let kw_re = Regex::new(&format!(r"(^|\b)({})($|\>)", kwr.kw)).unwrap();
-        // let pos_isolated_word = message.content_safe(ctx).find(&format!(" {} ", kwr.kw));
-        // let pos_final_word = message.content_safe(ctx).find(&format!(" {}", kwr.kw));
-        //
+        match kwr {
+            KeywordResponse::SingleKW { kw, response } => {
+                // no way to avoid recompiling the regex for every keyword
+                let kw_re = single_keyword_regex(kw);
+                // let pos_isolated_word = message.content_safe(ctx).find(&format!(" {} ", kwr.kw));
+                // let pos_final_word = message.content_safe(ctx).find(&format!(" {}", kwr.kw));
+                //
 
-        // if pos_isolated_word.is_some() || pos_final_word.is_some() {
-        if kw_re.is_match(&message.content_safe(ctx)) {
-            match message.reply(ctx, &kwr.response).await {
-                Ok(m) => {
-                    info!(
-                        "Johnson Bot replied to keyword {}, with {}",
-                        kwr.kw, m.content
-                    )
+                // if pos_isolated_word.is_some() || pos_final_word.is_some() {
+                if kw_re.is_match(&message.content_safe(ctx)) {
+                    match message.reply(ctx, response).await {
+                        Ok(m) => {
+                            info!("Johnson Bot replied to keyword {}, with {}", kw, m.content)
+                        }
+                        Err(e) => {
+                            error!(
+                                "Johnson Bot could not reply to keyword, {}. Error: {:?}",
+                                kw, e
+                            );
+                        }
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        "Johnson Bot could not reply to keyword, {}. Error: {:?}",
-                        kwr.kw, e
-                    );
+            }
+            KeywordResponse::MultiKW { kws, response } => {
+                let kw_re = multi_keyword_regex(kws);
+
+                if kw_re.is_match(&message.content_safe(ctx)) {
+                    match message.reply(ctx, response).await {
+                        Ok(m) => {
+                            info!(
+                                "Johnson Bot replied to multi keyword {:?}, with {}",
+                                kws, m.content
+                            )
+                        }
+                        Err(e) => {
+                            error!(
+                                "Johnson Bot could not reply to multi keyword, {:?}. Error: {:?}",
+                                kws, e
+                            );
+                        }
+                    }
+                }
+            }
+            KeywordResponse::MultiResponse { kw, responses } => {
+                let kw_re = single_keyword_regex(kw);
+
+                if kw_re.is_match(&message.content_safe(ctx)) {
+                    match message
+                        .reply(ctx, random_choice_unweighted(responses))
+                        .await
+                    {
+                        Ok(m) => {
+                            info!(
+                                "Johnson Bot replied to multi response keyword {}, with {}",
+                                kw, m.content
+                            );
+                        }
+                        Err(e) => {
+                            error!("Johnson Bot could not reply to multi response keyword {}. Error {:?}", kw, e);
+                        }
+                    }
+                }
+            }
+            KeywordResponse::WeightedResponses {
+                kw,
+                responses,
+                weights,
+            } => {
+                let kw_re = single_keyword_regex(kw);
+
+                if kw_re.is_match(&message.content_safe(ctx)) {
+                    match message
+                        .reply(ctx, random_choice_weighted(responses, weights))
+                        .await
+                    {
+                        Ok(m) => {
+                            info!(
+                                "Johnson Bot replied to weighted response keyword {}, with {}",
+                                kw, m.content
+                            );
+                        }
+                        Err(e) => {
+                            error!("Johnson Bot could not reply to weighted response keyword {}. Error: {:?}", kw, e);
+                        }
+                    }
+                }
+            }
+            KeywordResponse::MultiKWResponse { kws, responses } => {
+                let kw_re = multi_keyword_regex(kws);
+
+                if kw_re.is_match(&message.content_safe(ctx)) {
+                    match message
+                        .reply(ctx, random_choice_unweighted(responses))
+                        .await
+                    {
+                        Ok(m) => {
+                            info!(
+                                "Johnson Bot replied to multi response keywords: {:?}, with {}",
+                                kws, m.content
+                            );
+                        }
+                        Err(e) => {
+                            error!("Johnson Bot could not reply to multi response keywords, {:?}. Error: {:?}", kws, e);
+                        }
+                    }
+                }
+            }
+            KeywordResponse::MultiKWWeightedResponses {
+                kws,
+                responses,
+                weights,
+            } => {
+                let kw_re = multi_keyword_regex(kws);
+
+                if kw_re.is_match(&message.content_safe(ctx)) {
+                    match message
+                        .reply(ctx, random_choice_weighted(responses, weights))
+                        .await
+                    {
+                        Ok(m) => {
+                            info!(
+                                "Johnson Bot replied to weighted response keywords: {:?}, with {}",
+                                kws, m.content
+                            );
+                        }
+                        Err(e) => {
+                            error!("Johnson Bot could not reply to weighted response keywords, {:?}. Error: {:?}", kws, e);
+                        }
+                    }
                 }
             }
         }
