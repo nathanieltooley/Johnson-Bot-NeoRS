@@ -4,9 +4,34 @@ pub mod command {
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize, Clone)]
-    pub struct KeywordResponse {
-        pub kw: String,
-        pub response: String,
+    #[serde(untagged)]
+    pub enum KeywordResponse {
+        SingleKW {
+            kw: String,
+            response: String,
+        },
+        MultiKW {
+            kws: Vec<String>,
+            response: String,
+        },
+        MultiResponse {
+            kw: String,
+            responses: Vec<String>,
+        },
+        MultiKWResponse {
+            kws: Vec<String>,
+            responses: Vec<String>,
+        },
+        WeightedResponses {
+            kw: String,
+            responses: Vec<String>,
+            weights: Vec<f32>,
+        },
+        MultiKWWeightedResponses {
+            kws: Vec<String>,
+            responses: Vec<String>,
+            weights: Vec<f32>,
+        },
     }
 
     #[derive(Debug)]
@@ -29,7 +54,6 @@ pub mod command {
 
 pub mod mongo_schema {
     use mongodb::bson::{DateTime, Document};
-    use poise::serenity_prelude::UserId;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]
