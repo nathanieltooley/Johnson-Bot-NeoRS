@@ -2,5 +2,38 @@
     {
         "kw": "thank you",
         "response": "You're welcome!"
+    },
+    {
+        "kw": "based",
+        "response": "Based on what?"
+    },
+    {
+        "kws": ["rock and stone", "r&s", "rock and bone", "deep rock galactic", "drg"],
+        "responses": ["If you rock and stone, you're never alone!",
+            "Rock and Stone!",
+            "Rock and Stone lads!",
+            "Legally speakin, Rocking is more legal than Stoning",
+            "Stoner Rock!",
+            "Stone and Rock. Oh . . . wait.",
+            "Rock and Stone, it never gets old.",
+            "If you don't Rock and Stone, you ain't going home!"
+        ]
+    },
+    {
+        "kws": ["poggers", "pogger"],
+        "weights": [10, 10, 1],
+        "responses": [
+            "https://tenor.com/view/poggers-pepe-gif-12187647",
+            "https://tenor.com/view/pog-poggers-gif-20219474",
+            "https://tenor.com/view/poggers-deku-bakugo-my-hero-academia-my-hero-gif-18930451"
+        ]
+    },
+    {
+        "kw": "the game",
+        "response": "I lost the Game."
+    },
+    {
+        "kw": "flanksteak",
+        "response": "???"
     }
 ]
