@@ -1,5 +1,7 @@
 use poise::async_trait;
-use poise::serenity_prelude::{Context, EventHandler, GuildId, Message, Ready, Result};
+use poise::serenity_prelude::{
+    Context, CreateMessage, EventHandler, GuildId, Message, Ready, Result,
+};
 
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::Rng;
@@ -333,6 +335,20 @@ impl EventHandler for Handler {
             }
 
             if slurs::contains_slur(&message.content) {
+                let _ = message.delete(&ctx).await;
+
+                if let Ok(channel) = message.channel(&ctx).await {
+                    // We can unwrap here because of the guild check above
+                    let builder = CreateMessage::new()
+                        .content("Hey! No racism is allowed in my Discord Server!");
+                    let _ = channel.id().send_message(&ctx, builder).await;
+                }
+
+                info!(
+                    "User {} said a racial slur and their message has been removed. Message: {}",
+                    message.author.name, message.content
+                );
+
                 return;
             }
 

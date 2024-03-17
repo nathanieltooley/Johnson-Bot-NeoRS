@@ -98,6 +98,7 @@ async fn main() {
 
     let context_client = mongo_client.clone();
     let context_kwr = kw_responses.clone();
+
     // Build framework
     let framework = poise::Framework::builder()
         .options(opts)
