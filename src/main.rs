@@ -68,8 +68,11 @@ async fn main() {
     let intents = serenity::GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
-    let opts = poise::FrameworkOptions {
-        commands: vec![commands::basic::ping()],
+    let fw_opts = poise::FrameworkOptions {
+        commands: vec![
+            commands::basic::ping(),
+            commands::gamble::rock_paper_scissors(),
+        ],
         ..Default::default()
     };
 
@@ -101,7 +104,7 @@ async fn main() {
 
     // Build framework
     let framework = poise::Framework::builder()
-        .options(opts)
+        .options(fw_opts)
         .setup(|ctx, _ready, framework| {
             // Callback called during setup
             // Requires a pin that holds a future
