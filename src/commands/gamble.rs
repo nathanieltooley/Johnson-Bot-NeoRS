@@ -6,6 +6,7 @@ use serenity_prelude::futures::StreamExt;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
+use tokio::time::sleep;
 use tracing::{debug, info};
 
 use crate::custom_types::command::{Context, Error};
@@ -38,7 +39,7 @@ enum RpsResult {
     Tie,
 }
 
-async fn get_participate_choice(
+async fn get_participant_choice(
     ctx: &Context<'_>,
     rps_m: &Message,
     comp_id: UserId,
@@ -90,6 +91,8 @@ pub async fn rock_paper_scissors(
     if ctx.guild_id().is_none() {
         return Ok(());
     }
+
+    let temp_messages: Vec<Message> = vec![];
 
     ctx.defer_ephemeral().await?;
 
@@ -160,7 +163,7 @@ pub async fn rock_paper_scissors(
         .send_message(&ctx, rps_message_comp_auth)
         .await?;
 
-    let author_choice = match get_participate_choice(&ctx, &rps_m, author.id).await {
+    let author_choice = match get_participant_choice(&ctx, &rps_m, author.id).await {
         Some(c) => c,
         None => {
             ctx.reply("Timeout!").await?;
@@ -174,7 +177,7 @@ pub async fn rock_paper_scissors(
         .send_message(&ctx, rps_message_comp_op)
         .await?;
 
-    let opponent_choice = match get_participate_choice(&ctx, &rps_m, opponent.id).await {
+    let opponent_choice = match get_participant_choice(&ctx, &rps_m, opponent.id).await {
         Some(c) => c,
         None => {
             ctx.reply("Timeout!").await?;
@@ -229,7 +232,12 @@ pub async fn rock_paper_scissors(
         }
     }
 
-    rps_m.delete(ctx).await?;
+    sleep(Duration::from_secs(5)).await;
+
+    info!("Deleting temp messages for RPS");
+    for m in temp_messages {
+        m.delete(ctx).await?;
+    }
 
     Ok(())
 }
