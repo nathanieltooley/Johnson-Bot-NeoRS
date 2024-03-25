@@ -71,6 +71,7 @@ async fn main() {
     let fw_opts = poise::FrameworkOptions {
         commands: vec![
             commands::basic::ping(),
+            commands::basic::test_interaction(),
             commands::gamble::rock_paper_scissors(),
         ],
         ..Default::default()
