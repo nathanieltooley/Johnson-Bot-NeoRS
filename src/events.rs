@@ -1,7 +1,8 @@
-use poise::async_trait;
+use mongodb::error::CommandError;
 use poise::serenity_prelude::{
     Context, CreateMessage, EventHandler, GuildId, Message, Ready, Result,
 };
+use poise::{async_trait, FrameworkError};
 
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::Rng;
@@ -9,7 +10,7 @@ use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
-use crate::custom_types::command::{KeywordResponse, SerenityCtxData};
+use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use crate::mongo::ContextWrapper;
 pub struct Handler;
 
@@ -17,6 +18,29 @@ const MONEY_MIN: i64 = 5;
 const MONEY_MAX: i64 = 20;
 
 const EXP_PER_MESSAGE: i64 = 100;
+
+pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
+    match error {
+        FrameworkError::Command { error, ctx, .. } => {
+            error!(
+                "An error occurred during the execution of a command, {:?}. Error: {}",
+                ctx.command(),
+                error
+            );
+
+            ctx.channel_id()
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!("An Error has occured: {}", error)),
+                )
+                .await
+                .unwrap();
+        }
+        _ => {
+            error!("Oh dear, we have an error {:?}", error)
+        }
+    }
+}
 
 // Extract out the code for this logic since ThreadRNG is not thread safe
 fn money_rand() -> i64 {
