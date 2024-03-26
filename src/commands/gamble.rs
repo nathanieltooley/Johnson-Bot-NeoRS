@@ -10,6 +10,7 @@ use tokio::time::sleep;
 use tracing::{debug, info};
 
 use crate::custom_types::command::{Context, Error};
+use crate::utils::message::interaction::wait_for_user_interaction;
 use crate::utils::message::{send_channel_message, simple_message};
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
@@ -64,8 +65,6 @@ async fn get_participant_choice(
                 )
                 .await;
         } else {
-            let _ = interaction.defer_ephemeral(ctx).await;
-
             match interaction.data.kind {
                 ComponentInteractionDataKind::Button => {
                     // Store in var just in case a problem comes from deleting the message before
@@ -75,7 +74,10 @@ async fn get_participant_choice(
                     let _ = rps_m.delete(ctx).await;
                     return temp;
                 }
-                _ => panic!("Unexpected item in bagging area"),
+                _ => {
+                    let _ = rps_m.delete(ctx).await;
+                    panic!("Unexpected item in bagging area")
+                }
             };
         }
     }
@@ -108,6 +110,70 @@ pub async fn rock_paper_scissors(
         .nick_in(ctx, guild_id)
         .await
         .unwrap_or(opponent.name.clone());
+
+    let accept_message = ctx
+        .channel_id()
+        .send_message(
+            ctx,
+            CreateMessage::new()
+                .content(format!("{}, {author_nick} challenges you to a Rock Paper Scissors Duel. Do you accept?", opponent.mention()))
+                .button(CreateButton::new("accept").label("Accept"))
+                .button(CreateButton::new("decline").label("Decline")),
+        )
+        .await?;
+
+    let accept_interaction =
+        wait_for_user_interaction(&ctx, &accept_message, opponent.id, Duration::from_secs(60))
+            .await;
+
+    match accept_interaction {
+        Some(int) => match int.data.kind {
+            ComponentInteractionDataKind::Button => {
+                if int.data.custom_id.as_str() == "decline" {
+                    ctx.channel_id()
+                        .send_message(
+                            ctx,
+                            CreateMessage::new().content(format!(
+                                "{opponent_nick} has declined the invitation {}!",
+                                author.mention()
+                            )),
+                        )
+                        .await?;
+
+                    let _ = accept_message.delete(ctx).await;
+
+                    return Ok(());
+                } else {
+                    ctx.channel_id()
+                        .send_message(
+                            ctx,
+                            CreateMessage::new().content(format!(
+                                "{opponent_nick} has accepted the invitation {}!",
+                                author.mention()
+                            )),
+                        )
+                        .await?;
+                }
+            }
+            _ => {
+                panic!("Should be impossible");
+            }
+        },
+        None => {
+            ctx.channel_id()
+                .send_message(
+                    ctx,
+                    CreateMessage::new().content(format!(
+                        "{opponent_nick} did not reply in time, {}!",
+                        author.mention()
+                    )),
+                )
+                .await?;
+            return Ok(());
+        }
+    }
+
+    let _ = accept_message.delete(ctx).await;
 
     let win_table: HashMap<Rps, HashMap<Rps, RpsResult>> = HashMap::from([
         (
