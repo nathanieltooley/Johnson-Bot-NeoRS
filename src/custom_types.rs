@@ -56,7 +56,7 @@ pub mod mongo_schema {
     use mongodb::bson::{DateTime, Document};
     use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct User {
         pub name: String,
         pub discord_id: u64,
