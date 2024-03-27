@@ -102,6 +102,10 @@ pub async fn rock_paper_scissors(
         return Ok(());
     }
 
+    if opponent.bot {
+        return Ok(());
+    }
+
     debug!("Getting command interaction");
     let cmd_interaction = match ctx {
         Context::Application(a) => a.interaction,
