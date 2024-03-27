@@ -2,17 +2,17 @@ use std::f64::consts::E;
 
 use futures::{stream::TryStreamExt, FutureExt};
 use mongodb::{
-    bson::{doc, DateTime, Document},
-    options::ClientOptions,
+    bson::{doc, Bson, DateTime, Document},
+    options::{ClientOptions, FindOneAndUpdateOptions, ReturnDocument},
     Client, Collection,
 };
-use poise::serenity_prelude::{Context, GuildId, UserId};
+use poise::serenity_prelude::{self, model::user, Context, GuildId, UserId};
 use serde::de::DeserializeOwned;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
-use crate::custom_types::command::Context as JContext;
 use crate::custom_types::{command::SerenityCtxData, mongo_schema::User};
 use crate::utils;
+use crate::{custom_types::command::Context as JContext, utils::math};
 
 static DB_NAME: &str = "Johnson";
 
@@ -20,9 +20,64 @@ const XP_MULTIPLIER: f64 = 15566f64;
 const XP_TRANSLATION: f64 = 15000f64;
 const EXPO_MULTIPLIER: f64 = 0.0415;
 
+#[derive(Debug, Clone)]
 pub enum ContextType<'a> {
     Slash(JContext<'a>),
     Classic(&'a Context, GuildId),
+}
+
+/// Custom error type that encapsulates errors from my code and errors from MongoDB
+#[derive(Debug, Clone)]
+pub enum MongoError {
+    JohnsonError(JohnsonError),
+    DriverError(mongodb::error::Error),
+}
+
+impl From<JohnsonError> for MongoError {
+    fn from(value: JohnsonError) -> Self {
+        MongoError::JohnsonError(value)
+    }
+}
+
+impl From<mongodb::error::Error> for MongoError {
+    fn from(value: mongodb::error::Error) -> Self {
+        MongoError::DriverError(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum JohnsonError {
+    InsufficientFunds(User, u64),
+}
+
+impl std::error::Error for MongoError {}
+impl std::error::Error for JohnsonError {}
+
+impl std::fmt::Display for MongoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DriverError(m) => {
+                write!(f, "The mongo driver came across an error: {m}")
+            }
+            Self::JohnsonError(j) => {
+                write!(f, "Johnson caused an error during mongo execution: {j}")
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for JohnsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InsufficientFunds(user, funds) => {
+                write!(f, "Johnson attempted to remove {funds} funds from {user:?}")
+            }
+            #[allow(unreachable_patterns)]
+            _ => {
+                write!(f, "Unknown error")
+            }
+        }
+    }
 }
 
 /// This struct is to be a wrapper around both types of context
@@ -163,6 +218,59 @@ impl<'context> ContextWrapper<'context> {
             Ok(())
         }
     }
+
+    pub async fn get_user_safe(
+        &self,
+        user: &serenity_prelude::User,
+    ) -> Result<User, mongodb::error::Error> {
+        let user_col = get_user_collection(&self.get_client().await, self.get_guild_id()).await;
+
+        match self.get_user(user.id).await? {
+            Some(user) => {
+                return Ok(user);
+            }
+            None => {
+                let user = create_new_user(&user_col, user.id, &user.name).await?;
+                info!("New user created! {}", user.discord_id);
+                return Ok(user);
+            }
+        }
+    }
+
+    #[instrument(skip_all)]
+    pub async fn player_transaction(
+        &self,
+        user1: &serenity_prelude::User,
+        user2: &serenity_prelude::User,
+        amount: u64,
+    ) -> Result<(), MongoError> {
+        let m_user1 = self.get_user_safe(user1).await?;
+        let m_user2 = self.get_user_safe(user2).await?;
+
+        if m_user1.vbucks < amount.try_into().unwrap() {
+            return Err(JohnsonError::InsufficientFunds(m_user1, amount).into());
+        }
+
+        // Remove -amount from user1
+        self.give_user_money(
+            UserId::new(m_user1.discord_id),
+            -(TryInto::<i64>::try_into(amount).unwrap()),
+        )
+        .await?;
+
+        info!(
+            "Removed {amount} from {}:{}",
+            m_user1.name, m_user1.discord_id
+        );
+
+        // Give user2 amount
+        self.give_user_money(UserId::new(m_user2.discord_id), amount.try_into().unwrap())
+            .await?;
+
+        info!("Added {amount} to {}:{}", m_user2.name, m_user2.discord_id);
+
+        Ok(())
+    }
 }
 
 #[instrument]
@@ -210,6 +318,21 @@ pub async fn get_user(
     user_col
         .find_one(
             doc! {"discord_id": TryInto::<i64>::try_into(user_id).unwrap()},
+            None,
+        )
+        .await
+}
+
+pub async fn get_user_bsonid(
+    user_col: &Collection<User>,
+    _id: Bson,
+) -> Result<Option<User>, mongodb::error::Error> {
+    debug!("Attempting to get user with _id: {_id}");
+    user_col
+        .find_one(
+            doc! {
+                "_id": _id
+            },
             None,
         )
         .await
@@ -274,7 +397,12 @@ pub async fn give_user_money<'a>(
         .find_one_and_update(
             doc! {"discord_id": user_id},
             doc! {"$inc": doc! {"vbucks": amount}},
-            None,
+            // Make it so that it returns the user after it is updated
+            Some(
+                FindOneAndUpdateOptions::builder()
+                    .return_document(ReturnDocument::After)
+                    .build(),
+            ),
         )
         .await?;
 
@@ -353,11 +481,12 @@ pub async fn set_user_exp<'a>(
     todo!()
 }
 
+#[instrument(skip_all)]
 pub async fn create_new_user(
     user_col: &Collection<User>,
     user_id: UserId,
     user_nick: &str,
-) -> Result<(), mongodb::error::Error> {
+) -> Result<User, mongodb::error::Error> {
     let def_user = User {
         name: user_nick.to_string(),
         discord_id: user_id.into(),
@@ -370,6 +499,10 @@ pub async fn create_new_user(
         stroke_count: None,
     };
 
-    user_col.insert_one(def_user, None).await?;
-    Ok(())
+    let _id = user_col.insert_one(def_user, None).await?;
+    let new_user = get_user_bsonid(user_col, _id.inserted_id).await?.unwrap();
+
+    info!("Created new user: {:?}", new_user);
+
+    Ok(new_user)
 }
