@@ -7,9 +7,8 @@ mod mongo;
 mod utils;
 
 use std::env;
-use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Read};
-use std::path::Path;
+use std::fs::File;
+use std::io::BufReader;
 
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
@@ -17,7 +16,7 @@ use poise::Command;
 
 use custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use events::Handler;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 #[allow(dead_code)]
 enum CommandRegistering {
