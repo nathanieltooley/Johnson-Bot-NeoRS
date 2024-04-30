@@ -13,6 +13,7 @@ use std::io::BufReader;
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
+use songbird::SerenityInit;
 
 use custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use events::Handler;
@@ -72,6 +73,7 @@ async fn main() {
             commands::basic::ping(),
             commands::basic::test_interaction(),
             commands::gamble::rock_paper_scissors(),
+            commands::music::join(),
         ],
         ..Default::default()
     };
@@ -124,6 +126,7 @@ async fn main() {
     // Build client
     let mut client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
+        .register_songbird()
         .event_handler(Handler)
         .await
         .expect("Client should be built correctly");
