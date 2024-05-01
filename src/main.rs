@@ -73,7 +73,7 @@ async fn main() {
             commands::basic::ping(),
             commands::basic::test_interaction(),
             commands::gamble::rock_paper_scissors(),
-            commands::music::join(),
+            commands::music::play(),
         ],
         ..Default::default()
     };
