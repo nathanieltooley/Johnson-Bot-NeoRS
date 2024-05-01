@@ -1,8 +1,11 @@
 use poise::serenity_prelude;
+use songbird::input::File;
 use tracing::debug;
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
+
+use songbird::input::cached::Compressed;
 
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn play(ctx: Context<'_>) -> Result<(), Error> {
@@ -57,6 +60,19 @@ pub async fn play(ctx: Context<'_>) -> Result<(), Error> {
             }
         }
     };
+
+    {
+        let mut h_lock = vc.lock().await;
+
+        let song_src = Compressed::new(
+            File::new("resources/Apoapsis v6.wav").into(),
+            songbird::driver::Bitrate::Auto,
+        )
+        .await
+        .unwrap();
+
+        h_lock.play_input(song_src.into());
+    }
 
     Ok(())
 }
