@@ -1,6 +1,7 @@
 pub mod command {
-    use mongodb::{Client, Database};
-    use poise::serenity_prelude::{prelude::TypeMapKey, GuildId};
+    use mongodb::Client;
+    use poise::serenity_prelude::prelude::TypeMapKey;
+    use reqwest::Client as HttpClient;
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize, Clone)]
@@ -39,6 +40,7 @@ pub mod command {
     pub struct Data {
         pub johnson_handle: Client,
         pub kwr: Vec<KeywordResponse>,
+        pub http: HttpClient,
     }
 
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
