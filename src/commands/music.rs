@@ -1,17 +1,32 @@
-use poise::serenity_prelude;
-use songbird::input::File;
-use tracing::debug;
+use songbird::input::cached::Compressed;
+use songbird::input::{File, YoutubeDl};
+use tracing::{debug, error};
+use url::{Host, Url};
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
 
-use songbird::input::cached::Compressed;
-
 #[poise::command(slash_command, on_error = "error_handle")]
-pub async fn play(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
     if ctx.guild().is_none() {
         ctx.reply("Cannot run this command outside of a guild")
             .await?;
+        return Ok(());
+    }
+
+    let parsed_url = match Url::parse(&url) {
+        Ok(u) => u,
+        Err(e) => {
+            error!("Could not parse URL: {e}");
+            ctx.reply("Could not parse URL: {e}").await?;
+            return Ok(());
+        }
+    };
+
+    if parsed_url.host() != Some(Host::Domain("youtube.com"))
+        && parsed_url.host() != Some(Host::Domain("youtu.be"))
+    {
+        ctx.reply("Invalid URL").await?;
         return Ok(());
     }
 
@@ -38,6 +53,8 @@ pub async fn play(ctx: Context<'_>) -> Result<(), Error> {
         }
     };
 
+    ctx.defer_ephemeral().await?;
+
     let manager = songbird::get(ctx.serenity_context())
         .await
         .expect("Songbird should be registered with Johnson Bot")
@@ -63,15 +80,22 @@ pub async fn play(ctx: Context<'_>) -> Result<(), Error> {
 
     {
         let mut h_lock = vc.lock().await;
+        let http_client = ctx.data().http.clone();
 
-        let song_src = Compressed::new(
-            File::new("resources/Apoapsis v6.wav").into(),
-            songbird::driver::Bitrate::Auto,
-        )
-        .await
-        .unwrap();
+        // let song_src = Compressed::new(
+        //     File::new("resources/Apoapsis v6.wav").into(),
+        //     songbird::driver::Bitrate::Auto,
+        // )
+        // .await
+        // .unwrap();
+        //
+        // h_lock.play_input(song_src.into());
+        //
 
-        h_lock.play_input(song_src.into());
+        let ytdl = YoutubeDl::new(http_client, url);
+        h_lock.play_input(ytdl.into());
+
+        ctx.reply("Playing song").await?;
     }
 
     Ok(())
