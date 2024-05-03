@@ -32,6 +32,7 @@ impl<'a> CommandRegistering {
         commands: &[Command<Data, Error>],
         j_handle: Client,
         kwr: Vec<KeywordResponse>,
+        http: reqwest::Client,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         match self {
             // Register the commands globally
@@ -40,6 +41,7 @@ impl<'a> CommandRegistering {
                 Ok(Data {
                     johnson_handle: j_handle,
                     kwr,
+                    http,
                 })
             }
             // Register commands for every provided guild
@@ -51,6 +53,7 @@ impl<'a> CommandRegistering {
                 Ok(Data {
                     johnson_handle: j_handle,
                     kwr,
+                    http,
                 })
             }
         }
@@ -101,8 +104,7 @@ async fn main() {
     // Set register type
     let registering = CommandRegistering::ByGuild(vec![GuildId::new(427299383474782208)]);
 
-    let context_client = mongo_client.clone();
-    let context_kwr = kw_responses.clone();
+    let http_client = reqwest::Client::new();
 
     // Build framework
     let framework = poise::Framework::builder()
@@ -115,8 +117,9 @@ async fn main() {
                     .register(
                         ctx,
                         &framework.options().commands,
-                        context_client,
-                        context_kwr,
+                        mongo_client,
+                        kw_responses,
+                        http_client,
                     )
                     .await
             })
@@ -132,15 +135,6 @@ async fn main() {
         .expect("Client should be built correctly");
 
     info!("Client has been built successfully!");
-
-    let mut data = client.data.write().await;
-    data.insert::<SerenityCtxData>(Data {
-        johnson_handle: mongo_client,
-        kwr: kw_responses,
-    });
-
-    // Drop the lock and the borrow of client
-    drop(data);
 
     // Start client
     client.start().await.expect("Client error");
