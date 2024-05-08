@@ -1,10 +1,157 @@
-use songbird::input::cached::Compressed;
-use songbird::input::{File, YoutubeDl};
-use tracing::{debug, error};
+use poise::serenity_prelude::{async_trait, ChannelId, GuildId};
+use songbird::input::{AuxMetadata, Compose, YoutubeDl};
+use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
+use tokio::sync::{Mutex, MutexGuard};
+use tracing::{debug, error, info};
 use url::{Host, Url};
+
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::Arc;
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
+
+static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
+
+struct DriverReconnectHandler;
+struct DriverDisconnectHandler;
+
+struct TrackEventHandler {
+    track_meta: AuxMetadata,
+}
+struct TrackErrorHandler {
+    track_meta: AuxMetadata,
+}
+
+#[async_trait]
+impl EventHandler for DriverReconnectHandler {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        if let EventContext::DriverReconnect(cd) = ctx {
+            info!(
+                "Voice Driver reconnected to Channel ID: {}, Guild ID: {}",
+                cd.channel_id
+                    .map_or(String::from("No Channel"), |cid| cid.to_string()),
+                cd.guild_id,
+            );
+        };
+
+        None
+    }
+}
+
+#[async_trait]
+impl EventHandler for DriverDisconnectHandler {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        if let EventContext::DriverDisconnect(cd) = ctx {
+            info!(
+                "Voice Driver disconnected from Channel ID: {}, Guild ID: {}",
+                cd.channel_id
+                    .map_or(String::from("No Channel"), |cid| cid.to_string()),
+                cd.guild_id,
+            );
+        }
+
+        None
+    }
+}
+
+#[async_trait]
+impl EventHandler for TrackEventHandler {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        if let EventContext::Track(track_list) = ctx {
+            for (t_state, _t_handle) in *track_list {
+                // &Option<String> -> Option<&String>
+                let title = self.track_meta.title.as_deref().unwrap_or("No Title");
+                let artist = self.track_meta.artist.as_deref().unwrap_or("No Artist");
+
+                info!(
+                    "Track {} : {} updated to state: {:?}",
+                    title, artist, t_state
+                );
+            }
+        }
+
+        None
+    }
+}
+
+#[async_trait]
+impl EventHandler for TrackErrorHandler {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        if let EventContext::Track(track_list) = ctx {
+            for (t_state, _t_handle) in *track_list {
+                let title = self.track_meta.title.as_deref().unwrap_or("No Title");
+                let artist = self.track_meta.artist.as_deref().unwrap_or("No Artist");
+
+                info!(
+                    "Track {} : {} Encountered an error: {:?}",
+                    title, artist, t_state.playing
+                )
+            }
+        }
+
+        None
+    }
+}
+
+async fn join(
+    ctx: &Context<'_>,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<Arc<Mutex<Call>>, Error> {
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("Songbird should be registered with Johnson Bot")
+        .clone();
+
+    match manager.get(guild_id) {
+        Some(c) => {
+            let m_handle = c.lock().await;
+
+            match m_handle.current_channel() {
+                // If we have established a "Call" object but we're not in a channel
+                // Join this one
+
+                // This matches the None case further down
+                None => match manager.join(guild_id, channel_id).await {
+                    Ok(c) => {
+                        debug!("Johnson joined a voice channel!");
+                        Ok(c)
+                    }
+                    Err(e) => {
+                        error!("Johnson failed to join a voice channel! {e:?}");
+                        Err(Box::new(e))
+                    }
+                },
+                // Otherwise, just return the call
+                Some(_) => {
+                    // We have to drop the MutexGuard because it is borrowing c
+                    drop(m_handle);
+                    Ok(c)
+                }
+            }
+        }
+        None => {
+            // If the bot is not in a call, join the user's channel
+            match manager.join(guild_id, channel_id).await {
+                Ok(c) => {
+                    debug!("Johnson joined a voice channel");
+                    Ok(c)
+                }
+                Err(e) => {
+                    debug!("Johnson failed to join a voice channel {e}");
+                    // Return join error
+                    Err(Box::new(e))
+                }
+            }
+        }
+    }
+}
+
+async fn attach_event_handlers(voice_lock: &mut MutexGuard<'_, Call>) {
+    voice_lock.add_global_event(CoreEvent::DriverDisconnect.into(), DriverDisconnectHandler);
+    voice_lock.add_global_event(CoreEvent::DriverReconnect.into(), DriverReconnectHandler);
+}
 
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
@@ -18,7 +165,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         Ok(u) => u,
         Err(e) => {
             error!("Could not parse URL: {e}");
-            ctx.reply("Could not parse URL: {e}").await?;
+            ctx.reply(format!("Could not parse URL: {e}")).await?;
             return Ok(());
         }
     };
@@ -53,47 +200,51 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         }
     };
 
-    ctx.defer_ephemeral().await?;
+    ctx.defer().await?;
 
-    let manager = songbird::get(ctx.serenity_context())
-        .await
-        .expect("Songbird should be registered with Johnson Bot")
-        .clone();
-
-    let vc = match manager.get(guild_id) {
-        Some(c) => c,
-        None => {
-            // If the bot is not in a call, join the user's channel
-            match manager.join(guild_id, channel_id).await {
-                Ok(c) => {
-                    debug!("Johnson joined a voice channel");
-                    c
-                }
-                Err(e) => {
-                    debug!("Johnson failed to join a voice channel {e}");
-                    // Return join error
-                    return Err(Box::new(e));
-                }
-            }
-        }
-    };
+    let vc = join(&ctx, guild_id, channel_id).await?;
 
     {
         let mut h_lock = vc.lock().await;
+
+        if !DRIVER_EVENTS_ADDED.load(Relaxed) {
+            attach_event_handlers(&mut h_lock).await;
+            DRIVER_EVENTS_ADDED.swap(true, Relaxed);
+        }
+
         let http_client = ctx.data().http.clone();
 
-        // let song_src = Compressed::new(
-        //     File::new("resources/Apoapsis v6.wav").into(),
-        //     songbird::driver::Bitrate::Auto,
-        // )
-        // .await
-        // .unwrap();
-        //
-        // h_lock.play_input(song_src.into());
-        //
+        let mut ytdl = YoutubeDl::new(http_client, url);
+        let meta = ytdl.aux_metadata().await?;
 
-        let ytdl = YoutubeDl::new(http_client, url);
-        h_lock.play_input(ytdl.into());
+        let meta_events = meta.clone();
+
+        let title = &meta.title.unwrap_or(String::from("No Title"));
+        let author = &meta.artist.unwrap_or(String::from("No Author"));
+
+        debug!("Playing {}, by {}", title, author);
+        let t_handle = h_lock.play_input(ytdl.into());
+
+        t_handle.add_event(
+            TrackEvent::Pause.into(),
+            TrackEventHandler {
+                track_meta: meta_events.clone(),
+            },
+        )?;
+
+        t_handle.add_event(
+            TrackEvent::End.into(),
+            TrackEventHandler {
+                track_meta: meta_events.clone(),
+            },
+        )?;
+
+        t_handle.add_event(
+            TrackEvent::Error.into(),
+            TrackErrorHandler {
+                track_meta: meta_events.clone(),
+            },
+        )?;
 
         ctx.reply("Playing song").await?;
     }
