@@ -94,6 +94,8 @@ impl EventHandler for TrackErrorHandler {
     }
 }
 
+/// Will join the given channel in the given Guild either by creating a new call object and joining
+/// the channel or by utilizing an already existing call object and switching channels
 async fn join(
     ctx: &Context<'_>,
     guild_id: GuildId,
@@ -105,38 +107,46 @@ async fn join(
         .clone();
 
     match manager.get(guild_id) {
-        Some(c) => {
-            let m_handle = c.lock().await;
+        Some(call) => {
+            debug!("Call object already created, attempting to connect again to channel");
+            let mut call_handle = call.lock().await;
 
-            match m_handle.current_channel() {
+            debug!("Attempting to join channel with call object");
+            match call_handle.current_channel() {
                 // If we have established a "Call" object but we're not in a channel
                 // Join this one
+                //
+                // We have to use the join method on the call handle
+                // as the manager join method will not work
 
                 // This matches the None case further down
-                None => match manager.join(guild_id, channel_id).await {
-                    Ok(c) => {
+                None => match call_handle.join(channel_id).await {
+                    Ok(_) => {
                         debug!("Johnson joined a voice channel!");
-                        Ok(c)
+
+                        // We have to drop the MutexGuard because it is borrowing call
+                        drop(call_handle);
+                        Ok(call)
                     }
                     Err(e) => {
                         error!("Johnson failed to join a voice channel! {e:?}");
                         Err(Box::new(e))
                     }
                 },
-                // Otherwise, just return the call
                 Some(_) => {
-                    // We have to drop the MutexGuard because it is borrowing c
-                    drop(m_handle);
-                    Ok(c)
+                    debug!("Johnson already in channel, no need to reconnect");
+                    drop(call_handle);
+                    Ok(call)
                 }
             }
         }
         None => {
+            debug!("Call has not been created, creating now");
             // If the bot is not in a call, join the user's channel
             match manager.join(guild_id, channel_id).await {
-                Ok(c) => {
+                Ok(call) => {
                     debug!("Johnson joined a voice channel");
-                    Ok(c)
+                    Ok(call)
                 }
                 Err(e) => {
                     debug!("Johnson failed to join a voice channel {e}");
@@ -160,6 +170,8 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
             .await?;
         return Ok(());
     }
+
+    ctx.defer().await?;
 
     let parsed_url = match Url::parse(&url) {
         Ok(u) => u,
@@ -200,7 +212,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         }
     };
 
-    ctx.defer().await?;
+    debug!("Attempting to join VC");
 
     let vc = join(&ctx, guild_id, channel_id).await?;
 
@@ -208,6 +220,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         let mut h_lock = vc.lock().await;
 
         if !DRIVER_EVENTS_ADDED.load(Relaxed) {
+            debug!("Attaching event handlers to global driver");
             attach_event_handlers(&mut h_lock).await;
             DRIVER_EVENTS_ADDED.swap(true, Relaxed);
         }
@@ -248,6 +261,8 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
         ctx.reply("Playing song").await?;
     }
+
+    debug!("Done loading song");
 
     Ok(())
 }
