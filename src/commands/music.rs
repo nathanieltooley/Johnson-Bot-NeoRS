@@ -1,4 +1,5 @@
-use poise::serenity_prelude::{async_trait, ChannelId, GuildId};
+use poise::serenity_prelude::{async_trait, ChannelId, CreateEmbed, GuildId};
+use poise::CreateReply;
 use songbird::input::{AuxMetadata, Compose, YoutubeDl};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
@@ -163,6 +164,28 @@ async fn attach_event_handlers(voice_lock: &mut MutexGuard<'_, Call>) {
     voice_lock.add_global_event(CoreEvent::DriverReconnect.into(), DriverReconnectHandler);
 }
 
+fn create_song_embed(metadata: &AuxMetadata) -> CreateEmbed {
+    let embed = CreateEmbed::new()
+        .field(
+            "Song Name: ",
+            metadata.title.as_deref().unwrap_or("No Name"),
+            false,
+        )
+        .field(
+            "Song Artist: ",
+            metadata.artist.as_deref().unwrap_or("No Artist"),
+            false,
+        );
+
+    // If the metadata contains a thumbnail, create an embed thumbnail
+    let embed = match metadata.thumbnail.as_deref() {
+        Some(thumbnail) => embed.image(thumbnail),
+        None => embed,
+    };
+
+    embed
+}
+
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
     if ctx.guild().is_none() {
@@ -232,8 +255,8 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
         let meta_events = meta.clone();
 
-        let title = &meta.title.unwrap_or(String::from("No Title"));
-        let author = &meta.artist.unwrap_or(String::from("No Author"));
+        let title = &meta.title.as_deref().unwrap_or("No Title");
+        let author = &meta.artist.as_deref().unwrap_or("No Author");
 
         debug!("Playing {}, by {}", title, author);
         let t_handle = h_lock.play_input(ytdl.into());
@@ -259,7 +282,12 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
             },
         )?;
 
-        ctx.reply("Playing song").await?;
+        ctx.send(CreateReply {
+            content: None,
+            embeds: vec![create_song_embed(&meta)],
+            ..Default::default()
+        })
+        .await?;
     }
 
     debug!("Done loading song");
