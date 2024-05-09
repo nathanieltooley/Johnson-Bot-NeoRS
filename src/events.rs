@@ -1,7 +1,4 @@
-use mongodb::error::CommandError;
-use poise::serenity_prelude::{
-    Context, CreateMessage, EventHandler, GuildId, Message, Ready, Result,
-};
+use poise::serenity_prelude::{Context, CreateMessage, EventHandler, GuildId, Message, Ready};
 use poise::{async_trait, FrameworkError};
 
 use rand::distributions::{Distribution, WeightedIndex};
@@ -23,7 +20,7 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
             error!(
-                "An error occurred during the execution of a command, {:?}. Error: {}",
+                "An error occurred during the execution of a command, {:?}. Error: {:?}",
                 ctx.command(),
                 error
             );
