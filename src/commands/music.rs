@@ -228,6 +228,7 @@ async fn attach_event_handlers(voice_lock: &mut MutexGuard<'_, Call>) {
 
 fn create_song_embed(metadata: &AuxMetadata) -> CreateEmbed {
     let embed = CreateEmbed::new()
+        .title("NOW PLAYING")
         .field(
             "Song Name: ",
             metadata.title.as_deref().unwrap_or("No Name"),
@@ -342,7 +343,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
         debug!("Enqueuing {}, by {}", title, author);
         let t_handle = h_lock.enqueue(track).await;
-        ctx.say(format!("Enqueuing {}, by {}", title, author))
+        ctx.say(format!("Enqueuing `{}`, by `{}`", title, author))
             .await?;
 
         t_handle.add_event(
