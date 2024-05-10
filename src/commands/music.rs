@@ -1,11 +1,14 @@
-use poise::serenity_prelude::{async_trait, ChannelId, CreateEmbed, GuildId};
-use poise::CreateReply;
+use once_cell::sync::Lazy;
+use poise::serenity_prelude::{async_trait, ChannelId, CreateEmbed, CreateMessage, GuildId, Http};
 use songbird::input::{AuxMetadata, Compose, YoutubeDl};
+use songbird::tracks::{PlayMode, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use url::{Host, Url};
+use uuid::Uuid;
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
 
@@ -13,6 +16,14 @@ use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
 
 static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
+
+// I know static stuff is frowned apon, but like cmon
+// this is the best way of doing this, mainly because
+// the event has to take ownership of the handler
+//
+// Mutex is added here for interior mutability
+static TRACK_METADATA_MAP: Lazy<Mutex<HashMap<Uuid, AuxMetadata>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 struct DriverReconnectHandler;
 struct DriverDisconnectHandler;
@@ -22,6 +33,11 @@ struct TrackEventHandler {
 }
 struct TrackErrorHandler {
     track_meta: AuxMetadata,
+}
+
+struct TrackNotifier {
+    channel_id: ChannelId,
+    http_handle: Arc<Http>,
 }
 
 #[async_trait]
@@ -60,7 +76,7 @@ impl EventHandler for DriverDisconnectHandler {
 impl EventHandler for TrackEventHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::Track(track_list) = ctx {
-            for (t_state, _t_handle) in *track_list {
+            for (t_state, t_handle) in *track_list {
                 // &Option<String> -> Option<&String>
                 let title = self.track_meta.title.as_deref().unwrap_or("No Title");
                 let artist = self.track_meta.artist.as_deref().unwrap_or("No Artist");
@@ -69,6 +85,21 @@ impl EventHandler for TrackEventHandler {
                     "Track {} : {} updated to state: {:?}",
                     title, artist, t_state
                 );
+
+                if t_state.playing == PlayMode::End {
+                    match TRACK_METADATA_MAP
+                        .lock()
+                        .await
+                        .remove_entry(&t_handle.uuid())
+                    {
+                        Some(_) => {
+                            info!("Deleted metadata from UUID: {}", t_handle.uuid());
+                        }
+                        None => {
+                            warn!("Track metadata cleanup attempted to remove metadata using a handle that was not in the map");
+                        }
+                    }
+                }
             }
         }
 
@@ -88,6 +119,37 @@ impl EventHandler for TrackErrorHandler {
                     "Track {} : {} Encountered an error: {:?}",
                     title, artist, t_state.playing
                 )
+            }
+        }
+
+        None
+    }
+}
+
+#[async_trait]
+impl EventHandler for TrackNotifier {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        if let EventContext::Track(track_list) = ctx {
+            for (_t_state, t_handle) in *track_list {
+                let track_message_result = self
+                    .channel_id
+                    .send_message(
+                        &self.http_handle,
+                        CreateMessage::new().embed(create_song_embed(
+                            TRACK_METADATA_MAP
+                                .lock()
+                                .await
+                                .get(&t_handle.uuid())
+                                .expect(
+                                    "track metadata should've been added to the track notifier map",
+                                ),
+                        )),
+                    )
+                    .await;
+
+                if let Err(e) = track_message_result {
+                    error!("Could not send track play notification message: {e:?}");
+                }
             }
         }
 
@@ -244,22 +306,44 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
         if !DRIVER_EVENTS_ADDED.load(Relaxed) {
             debug!("Attaching event handlers to global driver");
+
             attach_event_handlers(&mut h_lock).await;
+            let track_notif = TrackNotifier {
+                http_handle: ctx.serenity_context().http.clone(),
+                channel_id: ctx.channel_id(),
+            };
+
+            h_lock.add_global_event(Event::Track(TrackEvent::Play), track_notif);
+
             DRIVER_EVENTS_ADDED.swap(true, Relaxed);
         }
 
         let http_client = ctx.data().http.clone();
 
+        // Create the YTDL object
         let mut ytdl = YoutubeDl::new(http_client, url);
+
         let meta = ytdl.aux_metadata().await?;
 
+        // Clone meta data for the events
         let meta_events = meta.clone();
 
         let title = &meta.title.as_deref().unwrap_or("No Title");
         let author = &meta.artist.as_deref().unwrap_or("No Author");
 
-        debug!("Playing {}, by {}", title, author);
-        let t_handle = h_lock.play_input(ytdl.into());
+        // Create track here so we can get the UUID
+        // and insert it into the map before it gets played
+        let track = Track::new(ytdl.into());
+
+        TRACK_METADATA_MAP
+            .lock()
+            .await
+            .insert(track.uuid, meta.clone());
+
+        debug!("Enqueuing {}, by {}", title, author);
+        let t_handle = h_lock.enqueue(track).await;
+        ctx.say(format!("Enqueuing {}, by {}", title, author))
+            .await?;
 
         t_handle.add_event(
             TrackEvent::Pause.into(),
@@ -281,16 +365,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
                 track_meta: meta_events.clone(),
             },
         )?;
-
-        ctx.send(CreateReply {
-            content: None,
-            embeds: vec![create_song_embed(&meta)],
-            ..Default::default()
-        })
-        .await?;
     }
-
-    debug!("Done loading song");
 
     Ok(())
 }
