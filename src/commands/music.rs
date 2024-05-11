@@ -22,17 +22,17 @@ static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
 // the event has to take ownership of the handler
 //
 // Mutex is added here for interior mutability
-static TRACK_METADATA_MAP: Lazy<Mutex<HashMap<Uuid, AuxMetadata>>> =
+static TRACK_METADATA_MAP: Lazy<Mutex<HashMap<Uuid, Arc<AuxMetadata>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 struct DriverReconnectHandler;
 struct DriverDisconnectHandler;
 
 struct TrackEventHandler {
-    track_meta: AuxMetadata,
+    track_meta: Arc<AuxMetadata>,
 }
 struct TrackErrorHandler {
-    track_meta: AuxMetadata,
+    track_meta: Arc<AuxMetadata>,
 }
 
 struct TrackNotifier {
@@ -324,10 +324,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         // Create the YTDL object
         let mut ytdl = YoutubeDl::new(http_client, url);
 
-        let meta = ytdl.aux_metadata().await?;
-
-        // Clone meta data for the events
-        let meta_events = meta.clone();
+        let meta = Arc::new(ytdl.aux_metadata().await?);
 
         let title = &meta.title.as_deref().unwrap_or("No Title");
         let author = &meta.artist.as_deref().unwrap_or("No Author");
@@ -349,21 +346,21 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         t_handle.add_event(
             TrackEvent::Pause.into(),
             TrackEventHandler {
-                track_meta: meta_events.clone(),
+                track_meta: Arc::clone(&meta),
             },
         )?;
 
         t_handle.add_event(
             TrackEvent::End.into(),
             TrackEventHandler {
-                track_meta: meta_events.clone(),
+                track_meta: Arc::clone(&meta),
             },
         )?;
 
         t_handle.add_event(
             TrackEvent::Error.into(),
             TrackErrorHandler {
-                track_meta: meta_events.clone(),
+                track_meta: Arc::clone(&meta),
             },
         )?;
     }
