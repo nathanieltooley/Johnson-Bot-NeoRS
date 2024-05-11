@@ -1,5 +1,7 @@
 use once_cell::sync::Lazy;
-use poise::serenity_prelude::{async_trait, ChannelId, CreateEmbed, CreateMessage, GuildId, Http};
+use poise::serenity_prelude::{
+    async_trait, ChannelId, Color, CreateEmbed, CreateMessage, GuildId, Http,
+};
 use songbird::input::{AuxMetadata, Compose, YoutubeDl};
 use songbird::tracks::{PlayMode, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
@@ -22,19 +24,32 @@ static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
 // the event has to take ownership of the handler
 //
 // Mutex is added here for interior mutability
-static TRACK_METADATA_MAP: Lazy<Mutex<HashMap<Uuid, Arc<AuxMetadata>>>> =
+static TRACK_METADATA_MAP: Lazy<Mutex<HashMap<Uuid, Arc<TrackMetadata>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+static SONG_MESSAGE_COLOR_MAP: Lazy<HashMap<&str, Color>> = Lazy::new(|| {
+    let mut m = HashMap::new();
+
+    m.insert("youtube.com", Color::RED);
+    m.insert("youtu.be", Color::RED);
+
+    m
+});
+
+struct TrackMetadata {
+    aux_meta: AuxMetadata,
+    url: Url,
+}
 
 struct DriverReconnectHandler;
 struct DriverDisconnectHandler;
 
 struct TrackEventHandler {
-    track_meta: Arc<AuxMetadata>,
+    track_meta: Arc<TrackMetadata>,
 }
 struct TrackErrorHandler {
-    track_meta: Arc<AuxMetadata>,
+    track_meta: Arc<TrackMetadata>,
 }
-
 struct TrackNotifier {
     channel_id: ChannelId,
     http_handle: Arc<Http>,
@@ -78,8 +93,19 @@ impl EventHandler for TrackEventHandler {
         if let EventContext::Track(track_list) = ctx {
             for (t_state, t_handle) in *track_list {
                 // &Option<String> -> Option<&String>
-                let title = self.track_meta.title.as_deref().unwrap_or("No Title");
-                let artist = self.track_meta.artist.as_deref().unwrap_or("No Artist");
+                let title = self
+                    .track_meta
+                    .aux_meta
+                    .title
+                    .as_deref()
+                    .unwrap_or("No Title");
+
+                let artist = self
+                    .track_meta
+                    .aux_meta
+                    .artist
+                    .as_deref()
+                    .unwrap_or("No Artist");
 
                 info!(
                     "Track {} : {} updated to state: {:?}",
@@ -93,7 +119,7 @@ impl EventHandler for TrackEventHandler {
                         .remove_entry(&t_handle.uuid())
                     {
                         Some(_) => {
-                            info!("Deleted metadata from UUID: {}", t_handle.uuid());
+                            debug!("Deleted metadata from UUID: {}", t_handle.uuid());
                         }
                         None => {
                             warn!("Track metadata cleanup attempted to remove metadata using a handle that was not in the map");
@@ -112,8 +138,18 @@ impl EventHandler for TrackErrorHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::Track(track_list) = ctx {
             for (t_state, _t_handle) in *track_list {
-                let title = self.track_meta.title.as_deref().unwrap_or("No Title");
-                let artist = self.track_meta.artist.as_deref().unwrap_or("No Artist");
+                let title = self
+                    .track_meta
+                    .aux_meta
+                    .title
+                    .as_deref()
+                    .unwrap_or("No Title");
+                let artist = self
+                    .track_meta
+                    .aux_meta
+                    .artist
+                    .as_deref()
+                    .unwrap_or("No Artist");
 
                 info!(
                     "Track {} : {} Encountered an error: {:?}",
@@ -226,22 +262,32 @@ async fn attach_event_handlers(voice_lock: &mut MutexGuard<'_, Call>) {
     voice_lock.add_global_event(CoreEvent::DriverReconnect.into(), DriverReconnectHandler);
 }
 
-fn create_song_embed(metadata: &AuxMetadata) -> CreateEmbed {
+fn create_song_embed(metadata: &TrackMetadata) -> CreateEmbed {
+    let color = *SONG_MESSAGE_COLOR_MAP
+        .get(
+            metadata
+                .url
+                .host_str()
+                .expect("should have valid domain to be considered for playback"),
+        )
+        .unwrap_or(&Color::GOLD);
+
     let embed = CreateEmbed::new()
         .title("NOW PLAYING")
         .field(
             "Song Name: ",
-            metadata.title.as_deref().unwrap_or("No Name"),
+            metadata.aux_meta.title.as_deref().unwrap_or("No Name"),
             false,
         )
         .field(
             "Song Artist: ",
-            metadata.artist.as_deref().unwrap_or("No Artist"),
+            metadata.aux_meta.artist.as_deref().unwrap_or("No Artist"),
             false,
-        );
+        )
+        .color(color);
 
     // If the metadata contains a thumbnail, create an embed thumbnail
-    let embed = match metadata.thumbnail.as_deref() {
+    let embed = match metadata.aux_meta.thumbnail.as_deref() {
         Some(thumbnail) => embed.image(thumbnail),
         None => embed,
     };
@@ -324,10 +370,14 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         // Create the YTDL object
         let mut ytdl = YoutubeDl::new(http_client, url);
 
-        let meta = Arc::new(ytdl.aux_metadata().await?);
+        let meta = ytdl.aux_metadata().await?;
+        let track_meta = Arc::new(TrackMetadata {
+            aux_meta: meta,
+            url: parsed_url,
+        });
 
-        let title = &meta.title.as_deref().unwrap_or("No Title");
-        let author = &meta.artist.as_deref().unwrap_or("No Author");
+        let title = &track_meta.aux_meta.title.as_deref().unwrap_or("No Title");
+        let author = &track_meta.aux_meta.artist.as_deref().unwrap_or("No Author");
 
         // Create track here so we can get the UUID
         // and insert it into the map before it gets played
@@ -336,7 +386,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         TRACK_METADATA_MAP
             .lock()
             .await
-            .insert(track.uuid, meta.clone());
+            .insert(track.uuid, track_meta.clone());
 
         debug!("Enqueuing {}, by {}", title, author);
         let t_handle = h_lock.enqueue(track).await;
@@ -346,21 +396,21 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         t_handle.add_event(
             TrackEvent::Pause.into(),
             TrackEventHandler {
-                track_meta: Arc::clone(&meta),
+                track_meta: Arc::clone(&track_meta),
             },
         )?;
 
         t_handle.add_event(
             TrackEvent::End.into(),
             TrackEventHandler {
-                track_meta: Arc::clone(&meta),
+                track_meta: Arc::clone(&track_meta),
             },
         )?;
 
         t_handle.add_event(
             TrackEvent::Error.into(),
             TrackErrorHandler {
-                track_meta: Arc::clone(&meta),
+                track_meta: Arc::clone(&track_meta),
             },
         )?;
     }
