@@ -2,6 +2,7 @@ pub mod command {
     use mongodb::Client;
     use poise::serenity_prelude::prelude::TypeMapKey;
     use reqwest::Client as HttpClient;
+    use rspotify::{clients::BaseClient, ClientCredsSpotify};
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize, Clone)]
@@ -41,6 +42,7 @@ pub mod command {
         pub johnson_handle: Client,
         pub kwr: Vec<KeywordResponse>,
         pub http: HttpClient,
+        pub spotify_client: ClientCredsSpotify
     }
 
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
