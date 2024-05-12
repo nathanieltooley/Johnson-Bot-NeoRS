@@ -7,8 +7,10 @@ use songbird::tracks::{PlayMode, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
 use tracing::{debug, error, info, warn};
-use url::{Host, Url};
+use url::Url;
 use uuid::Uuid;
+use rspotify::clients::BaseClient;
+use rspotify::model::PlaylistId;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -16,6 +18,7 @@ use std::sync::Arc;
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
+use crate::spotify;
 
 static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
 
@@ -309,16 +312,35 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         Ok(u) => u,
         Err(e) => {
             error!("Could not parse URL: {e}");
-            ctx.reply(format!("Could not parse URL: {e}")).await?;
+            ctx.say(format!("Could not parse URL: {e}")).await?;
             return Ok(());
         }
     };
 
-    if parsed_url.host() != Some(Host::Domain("youtube.com"))
-        && parsed_url.host() != Some(Host::Domain("youtu.be"))
-    {
-        ctx.reply("Invalid URL").await?;
-        return Ok(());
+    debug!("{parsed_url:?}");
+
+    match parsed_url.host() {
+        Some(h) => {
+            match h.to_string().as_str() {
+                "youtube.com" | "youtu.be" => {
+                    debug!("User passed in Youtube link");
+                }
+                "open.spotify.com" => {
+                    let spotify = &ctx.data().spotify_client; 
+                    let uri = spotify::url_to_uri(&parsed_url)?;
+                    debug!("{uri:?}");
+                    info!("{:?}", spotify.playlist(PlaylistId::from_uri(&uri)?, None, None).await?);
+                }
+                _ => {
+                    ctx.say("Invalid URL").await?;
+                    return Ok(());
+                }
+            }
+        }
+        None => {
+            ctx.say("Invalid URL").await?;
+            return Ok(());
+        }
     }
 
     let (guild_id, channel_id) = {
