@@ -5,19 +5,23 @@ mod events;
 mod logging;
 mod mongo;
 mod utils;
+mod spotify;
 
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
+use std::process::exit;
 
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
+use rspotify::{ClientCredsSpotify, Credentials};
 use songbird::SerenityInit;
 
-use custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
+use custom_types::command::{Data, Error, KeywordResponse};
 use events::Handler;
-use tracing::{debug, info};
+use spotify::spotify_init;
+use tracing::{debug, info, error};
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -33,6 +37,7 @@ impl<'a> CommandRegistering {
         j_handle: Client,
         kwr: Vec<KeywordResponse>,
         http: reqwest::Client,
+        spotify: ClientCredsSpotify
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         match self {
             // Register the commands globally
@@ -42,6 +47,7 @@ impl<'a> CommandRegistering {
                     johnson_handle: j_handle,
                     kwr,
                     http,
+                    spotify_client: spotify
                 })
             }
             // Register commands for every provided guild
@@ -54,6 +60,7 @@ impl<'a> CommandRegistering {
                     johnson_handle: j_handle,
                     kwr,
                     http,
+                    spotify_client: spotify
                 })
             }
         }
@@ -90,6 +97,16 @@ async fn main() {
 
     info!("Mongo data successfully initialized");
 
+    // Spotify setup
+    let spotify = match spotify_init().await {
+        Err(e) => {
+            error!("Could not get access token for Spotify: {e:?}");
+            exit(1);
+        }
+        Ok(s) => s
+    };
+
+    // KWR Config File
     let working_dir = env::current_dir().unwrap();
     let kwr_path = working_dir.join("cfg/kwr.json");
     let kwr_file = File::open(&kwr_path);
@@ -120,6 +137,7 @@ async fn main() {
                         mongo_client,
                         kw_responses,
                         http_client,
+                        spotify
                     )
                     .await
             })
