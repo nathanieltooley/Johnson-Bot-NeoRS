@@ -1,9 +1,16 @@
 use futures::{StreamExt, TryStreamExt};
-use rspotify::{ clients::BaseClient, model::{FullTrack, IdError, PlaylistId, TrackId, Type, PlaylistItem}, ClientCredsSpotify, ClientError, Credentials };
-use crate::custom_types::command::Error as CmdError;
+use rspotify::{ 
+    clients::BaseClient, 
+    model::{FullTrack, IdError, PlaylistId, TrackId, Type, PlaylistItem}, 
+    http::HttpError, 
+    ClientCredsSpotify, ClientError, Credentials 
+};
 use url::Url;
 use std::error::Error;
 use futures_util::pin_mut;
+use tracing::debug;
+
+use crate::custom_types::command::Error as CmdError;
 
 #[derive(Debug)]
 pub enum JohnsonSpotifyError {
@@ -27,7 +34,23 @@ impl std::fmt::Display for JohnsonSpotifyError {
                 write!(f, "This type of Spotify ID is not supported for playback: {}", t)
             }
             JohnsonSpotifyError::ClientError(c) => {
-                write!(f, "An error occured while trying to use the client: {}", c)
+                match c {
+                    ClientError::Http(error) => {
+                        match **error {
+                            HttpError::StatusCode(ref response) => {
+                                if response.status() == 404 {
+                                    write!(f, "Could not find the requested Spotify resource. If it is a playlist, check to make sure it is public.")
+                                } else {
+                                    write!(f, "Spotify Client got {} status code", response.status())
+                                }
+                            }
+                            _ => write!(f, "An error occured while trying to use the client: {}", error)
+                        }
+                    }
+                    _ => {
+                        write!(f, "An error occured while trying to use the client: {}", c)
+                    }
+                }
             }
         }
     }
@@ -84,6 +107,8 @@ pub fn url_to_uri_str(url: &Url) -> Result<String, JohnsonSpotifyError> {
     let spotify_type = splits[1];
     let id = splits[2];
 
+    debug!("Splits: {spotify_type}, {id}");
+
     uri.push_str(&format!("{}:", spotify_type));
     uri.push_str(id);
 
@@ -99,6 +124,8 @@ pub async fn get_tracks_from_url(spotify_client: &ClientCredsSpotify, url: &Url)
             Ok(vec![track])
         }
         Type::Playlist => {
+            let playlist = spotify_client.playlist(PlaylistId::from_id(uri.id.clone())?, None, None).await?;
+            debug!("Was sent playlist: {}", playlist.name);
             let playlist_stream = spotify_client.playlist_items(PlaylistId::from_id(uri.id)?, None, None);
             pin_mut!(playlist_stream);
 
