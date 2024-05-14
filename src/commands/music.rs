@@ -9,8 +9,6 @@ use tokio::sync::{Mutex, MutexGuard};
 use tracing::{debug, error, info, warn};
 use url::Url;
 use uuid::Uuid;
-use rspotify::clients::BaseClient;
-use rspotify::model::PlaylistId;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -18,7 +16,7 @@ use std::sync::Arc;
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
-use crate::spotify;
+use crate::spotify::{self, get_tracks_from_url};
 
 static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
 
@@ -35,6 +33,7 @@ static SONG_MESSAGE_COLOR_MAP: Lazy<HashMap<&str, Color>> = Lazy::new(|| {
 
     m.insert("youtube.com", Color::RED);
     m.insert("youtu.be", Color::RED);
+    m.insert("open.spotify.com", Color::DARK_GREEN);
 
     m
 });
@@ -319,30 +318,6 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
     debug!("{parsed_url:?}");
 
-    match parsed_url.host() {
-        Some(h) => {
-            match h.to_string().as_str() {
-                "youtube.com" | "youtu.be" => {
-                    debug!("User passed in Youtube link");
-                }
-                "open.spotify.com" => {
-                    let spotify = &ctx.data().spotify_client; 
-                    let uri = spotify::url_to_uri(&parsed_url)?;
-                    debug!("{uri:?}");
-                    info!("{:?}", spotify.playlist(PlaylistId::from_uri(&uri)?, None, None).await?);
-                }
-                _ => {
-                    ctx.say("Invalid URL").await?;
-                    return Ok(());
-                }
-            }
-        }
-        None => {
-            ctx.say("Invalid URL").await?;
-            return Ok(());
-        }
-    }
-
     let (guild_id, channel_id) = {
         let guild = ctx.guild().unwrap();
 
@@ -366,6 +341,48 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         }
     };
 
+    let mut ytdl_tracks: Vec<YoutubeDl> = Vec::new();
+
+    match parsed_url.host() {
+        Some(h) => {
+            match h.to_string().as_str() {
+                "youtube.com" | "youtu.be" => {
+                    debug!("User passed in Youtube link");
+
+                    let http_client = ctx.data().http.clone();
+
+                    ytdl_tracks.push(YoutubeDl::new(http_client, url));
+                }
+                "open.spotify.com" => {
+                    let spotify = &ctx.data().spotify_client;
+                    let http_client = &ctx.data().http;
+                    let tracks = get_tracks_from_url(spotify, &parsed_url).await?;
+
+                    debug!("Enqueuing {} tracks from spotify", tracks.len());
+
+                    ctx.say(format!("Enqueuing {} tracks from Spotify", tracks.len())).await?;
+
+                    ytdl_tracks.append(&mut tracks.iter().map(|track| {
+                        // Vec<Artists> -> Vec<&String> -> Vec<&str> -> String
+                        let artists = track.artists.iter().map(|artist| &artist.name).map(String::as_str).collect::<Vec<_>>().join(" ");
+                        let mut search_string = String::new();
+                        search_string.push_str(&format!("{} {}", track.name, artists));
+
+                        YoutubeDl::new_search(http_client.clone(), search_string)
+                    }).collect())
+                }
+                _ => {
+                    ctx.say("Invalid URL").await?;
+                    return Ok(());
+                }
+            }
+        }
+        None => {
+            ctx.say("Invalid URL").await?;
+            return Ok(());
+        }
+    }
+
     debug!("Attempting to join VC");
 
     let vc = join(&ctx, guild_id, channel_id).await?;
@@ -387,54 +404,56 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
             DRIVER_EVENTS_ADDED.swap(true, Relaxed);
         }
 
-        let http_client = ctx.data().http.clone();
+        let tracks_len = ytdl_tracks.len();
 
-        // Create the YTDL object
-        let mut ytdl = YoutubeDl::new(http_client, url);
+        for mut ytdl in ytdl_tracks {
+            let meta = ytdl.aux_metadata().await?;
+            let track_meta = Arc::new(TrackMetadata {
+                aux_meta: meta,
+                url: parsed_url.clone(),
+            });
 
-        let meta = ytdl.aux_metadata().await?;
-        let track_meta = Arc::new(TrackMetadata {
-            aux_meta: meta,
-            url: parsed_url,
-        });
+            let title = &track_meta.aux_meta.title.as_deref().unwrap_or("No Title");
+            let author = &track_meta.aux_meta.artist.as_deref().unwrap_or("No Author");
 
-        let title = &track_meta.aux_meta.title.as_deref().unwrap_or("No Title");
-        let author = &track_meta.aux_meta.artist.as_deref().unwrap_or("No Author");
+            // Create track here so we can get the UUID
+            // and insert it into the map before it gets played
+            let track = Track::new(ytdl.into());
 
-        // Create track here so we can get the UUID
-        // and insert it into the map before it gets played
-        let track = Track::new(ytdl.into());
+            TRACK_METADATA_MAP
+                .lock()
+                .await
+                .insert(track.uuid, track_meta.clone());
 
-        TRACK_METADATA_MAP
-            .lock()
-            .await
-            .insert(track.uuid, track_meta.clone());
+            let t_handle = h_lock.enqueue(track).await;
 
-        debug!("Enqueuing {}, by {}", title, author);
-        let t_handle = h_lock.enqueue(track).await;
-        ctx.say(format!("Enqueuing `{}`, by `{}`", title, author))
-            .await?;
+            if tracks_len == 1 {
+                ctx.say(format!("Enqueuing `{}`, by `{}`", title, author))
+                    .await?;
+            }
 
-        t_handle.add_event(
-            TrackEvent::Pause.into(),
-            TrackEventHandler {
-                track_meta: Arc::clone(&track_meta),
-            },
-        )?;
+            t_handle.add_event(
+                TrackEvent::Pause.into(),
+                TrackEventHandler {
+                    track_meta: Arc::clone(&track_meta),
+                },
+            )?;
 
-        t_handle.add_event(
-            TrackEvent::End.into(),
-            TrackEventHandler {
-                track_meta: Arc::clone(&track_meta),
-            },
-        )?;
+            t_handle.add_event(
+                TrackEvent::End.into(),
+                TrackEventHandler {
+                    track_meta: Arc::clone(&track_meta),
+                },
+            )?;
 
-        t_handle.add_event(
-            TrackEvent::Error.into(),
-            TrackErrorHandler {
-                track_meta: Arc::clone(&track_meta),
-            },
-        )?;
+            t_handle.add_event(
+                TrackEvent::Error.into(),
+                TrackErrorHandler {
+                    track_meta: Arc::clone(&track_meta),
+                },
+            )?;
+        }
+
     }
 
     Ok(())
