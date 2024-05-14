@@ -20,18 +20,12 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
             error!(
-                "An error occurred during the execution of a command, {:?}. Error: {:?}",
+                "An error occurred during the execution of a command, {:?}. Error: {}",
                 ctx.command(),
                 error
             );
 
-            ctx.channel_id()
-                .send_message(
-                    ctx,
-                    CreateMessage::new().content(format!("An Error has occured: {}", error)),
-                )
-                .await
-                .unwrap();
+            ctx.say(format!("An error has occurred: {}", error)).await.unwrap();
         }
         _ => {
             error!("Oh dear, we have an error {:?}", error)
