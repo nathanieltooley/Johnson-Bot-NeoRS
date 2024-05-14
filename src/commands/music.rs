@@ -275,12 +275,7 @@ fn create_song_embed(metadata: &TrackMetadata) -> CreateEmbed {
         .unwrap_or(&Color::GOLD);
 
     let embed = CreateEmbed::new()
-        .title("NOW PLAYING")
-        .field(
-            "Song Name: ",
-            metadata.aux_meta.title.as_deref().unwrap_or("No Name"),
-            false,
-        )
+        .title(format!("NOW PLAYING: {}", metadata.aux_meta.title.as_deref().unwrap_or("No Name")))
         .field(
             "Song Artist: ",
             metadata.aux_meta.artist.as_deref().unwrap_or("No Artist"),
