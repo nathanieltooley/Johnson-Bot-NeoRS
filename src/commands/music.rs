@@ -1,8 +1,9 @@
 use once_cell::sync::Lazy;
 use poise::serenity_prelude::{
-    async_trait, ChannelId, Color, CreateEmbed, CreateMessage, GuildId, Http,
+    async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http
 };
-use songbird::input::{AuxMetadata, Compose, YoutubeDl};
+use rspotify::model::FullTrack;
+use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, YoutubeDl};
 use songbird::tracks::{PlayMode, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
@@ -38,9 +39,72 @@ static SONG_MESSAGE_COLOR_MAP: Lazy<HashMap<&str, Color>> = Lazy::new(|| {
     m
 });
 
+#[derive(Clone)]
 struct TrackMetadata {
-    aux_meta: AuxMetadata,
-    url: Url,
+    title: String,
+    artists: String,
+    r#type: TrackType,
+    domain: Option<String>,
+    img_url: Option<String>
+}
+
+#[derive(Clone, PartialEq)]
+enum TrackType {
+    Ytdl,
+    Spotify
+}
+
+struct TrackWrapper {
+    ytdl: YoutubeDl,
+    metadata: TrackMetadata
+}
+
+impl TrackWrapper {
+    pub async fn from_ytdl(mut ytdl: YoutubeDl, url: &Url) -> Result<TrackWrapper, AudioStreamError> {
+        let meta = ytdl.aux_metadata().await?;
+
+        let title = meta.title.unwrap_or(String::from("No Title Found")); 
+        let artists = meta.artist.unwrap_or(String::from("No Artists Found"));
+        let r#type = TrackType::Ytdl;
+        let domain = url.domain().map(str::to_string);
+        let img_url = meta.thumbnail;
+
+        let metadata = TrackMetadata {
+            title,
+            artists,
+            r#type,
+            domain,
+            img_url
+        };
+
+        Ok(TrackWrapper { ytdl, metadata })
+    }
+
+    pub fn from_spotify(track: &FullTrack, http_client: reqwest::Client, url: &Url) -> TrackWrapper {
+        let title = track.name.clone();
+        let artists = track.artists.iter().map(|artist| &artist.name).map(String::as_str).collect::<Vec<_>>().join(" ");
+        let r#type = TrackType::Spotify;
+        let domain = url.domain().map(str::to_string);
+        let img_url = track.album.images.iter().max_by(|i, i2| {
+            i.height.unwrap_or(0).cmp(&i2.height.unwrap_or(0))
+        }).map(|img| img.url.clone());
+
+        let mut search_string = String::new();
+        search_string.push_str(&format!("{} {}", title, artists));
+
+        let metadata = TrackMetadata {
+            title,
+            artists,
+            r#type,
+            domain,
+            img_url
+        };
+
+
+        let ytdl = YoutubeDl::new_search(http_client, search_string);
+
+        TrackWrapper {ytdl, metadata}
+    }
 }
 
 struct DriverReconnectHandler;
@@ -95,19 +159,13 @@ impl EventHandler for TrackEventHandler {
         if let EventContext::Track(track_list) = ctx {
             for (t_state, t_handle) in *track_list {
                 // &Option<String> -> Option<&String>
-                let title = self
+                let title = &self
                     .track_meta
-                    .aux_meta
-                    .title
-                    .as_deref()
-                    .unwrap_or("No Title");
+                    .title;
 
-                let artist = self
+                let artist = &self
                     .track_meta
-                    .aux_meta
-                    .artist
-                    .as_deref()
-                    .unwrap_or("No Artist");
+                    .artists;
 
                 info!(
                     "Track {} : {} updated to state: {:?}",
@@ -140,18 +198,13 @@ impl EventHandler for TrackErrorHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::Track(track_list) = ctx {
             for (t_state, _t_handle) in *track_list {
-                let title = self
+                let title = &self
                     .track_meta
-                    .aux_meta
-                    .title
-                    .as_deref()
-                    .unwrap_or("No Title");
-                let artist = self
+                    .title;
+
+                let artist = &self
                     .track_meta
-                    .aux_meta
-                    .artist
-                    .as_deref()
-                    .unwrap_or("No Artist");
+                    .artists;
 
                 info!(
                     "Track {} : {} Encountered an error: {:?}",
@@ -267,29 +320,33 @@ async fn attach_event_handlers(voice_lock: &mut MutexGuard<'_, Call>) {
 fn create_song_embed(metadata: &TrackMetadata) -> CreateEmbed {
     let color = *SONG_MESSAGE_COLOR_MAP
         .get(
-            metadata
-                .url
-                .host_str()
-                .expect("should have valid domain to be considered for playback"),
+            metadata.domain.as_deref().unwrap_or("")
         )
         .unwrap_or(&Color::GOLD);
-
+    
     let embed = CreateEmbed::new()
-        .title(format!("NOW PLAYING: {}", metadata.aux_meta.title.as_deref().unwrap_or("No Name")))
+        .title(format!("NOW PLAYING: {}", metadata.title))
         .field(
             "Song Artist: ",
-            metadata.aux_meta.artist.as_deref().unwrap_or("No Artist"),
+            &metadata.artists,
             false,
         )
         .color(color);
 
-    // If the metadata contains a thumbnail, create an embed thumbnail
-    let embed = match metadata.aux_meta.thumbnail.as_deref() {
-        Some(thumbnail) => embed.image(thumbnail),
-        None => embed,
+    // Add a disclamier
+    let embed =  {
+        if metadata.r#type == TrackType::Spotify {
+            embed.footer(CreateEmbedFooter::new("NOTE: THIS SONG MAY BE WRONG AS IT WAS TAKEN FROM YOUTUBE RATHER THAN SPOTIFY DIRECTLY"))
+        } else {
+            embed
+        }
     };
 
-    embed
+    // If the metadata contains a thumbnail, create an embed thumbnail
+    match &metadata.img_url {
+        Some(thumbnail) => embed.image(thumbnail),
+        None => embed,
+    }
 }
 
 #[poise::command(slash_command, on_error = "error_handle")]
@@ -336,7 +393,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         }
     };
 
-    let mut ytdl_tracks: Vec<YoutubeDl> = Vec::new();
+    let mut ytdl_tracks: Vec<TrackWrapper> = Vec::new();
 
     match parsed_url.host() {
         Some(h) => {
@@ -346,7 +403,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
                     let http_client = ctx.data().http.clone();
 
-                    ytdl_tracks.push(YoutubeDl::new(http_client, url));
+                    ytdl_tracks.push(TrackWrapper::from_ytdl(YoutubeDl::new(http_client, url), &parsed_url).await?);
                 }
                 "open.spotify.com" => {
                     let spotify = &ctx.data().spotify_client;
@@ -358,12 +415,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
                     ctx.say(format!("Enqueuing {} tracks from Spotify", tracks.len())).await?;
 
                     ytdl_tracks.append(&mut tracks.iter().map(|track| {
-                        // Vec<Artists> -> Vec<&String> -> Vec<&str> -> String
-                        let artists = track.artists.iter().map(|artist| &artist.name).map(String::as_str).collect::<Vec<_>>().join(" ");
-                        let mut search_string = String::new();
-                        search_string.push_str(&format!("{} {}", track.name, artists));
-
-                        YoutubeDl::new_search(http_client.clone(), search_string)
+                        TrackWrapper::from_spotify(track, http_client.clone(), &parsed_url)
                     }).collect())
                 }
                 _ => {
@@ -401,19 +453,16 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
         let tracks_len = ytdl_tracks.len();
 
-        for mut ytdl in ytdl_tracks {
-            let meta = ytdl.aux_metadata().await?;
-            let track_meta = Arc::new(TrackMetadata {
-                aux_meta: meta,
-                url: parsed_url.clone(),
-            });
+        for ytdl in ytdl_tracks {
 
-            let title = &track_meta.aux_meta.title.as_deref().unwrap_or("No Title");
-            let author = &track_meta.aux_meta.artist.as_deref().unwrap_or("No Author");
+            let title = &ytdl.metadata.title;
+            let author = &ytdl.metadata.artists;
 
             // Create track here so we can get the UUID
             // and insert it into the map before it gets played
-            let track = Track::new(ytdl.into());
+            let track = Track::new(ytdl.ytdl.into());
+
+            let track_meta = Arc::new(ytdl.metadata.clone());
 
             TRACK_METADATA_MAP
                 .lock()
