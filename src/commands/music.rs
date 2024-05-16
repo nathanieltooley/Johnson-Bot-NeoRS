@@ -82,14 +82,14 @@ impl TrackWrapper {
         Ok(TrackWrapper { ytdl, metadata })
     }
 
-    pub fn from_spotify(track: &FullTrack, http_client: reqwest::Client, url: &Url) -> TrackWrapper {
-        let title = track.name.clone();
+    pub fn from_spotify(track: FullTrack, http_client: reqwest::Client, url: &Url) -> TrackWrapper {
+        let title = track.name;
         let artists = track.artists.iter().map(|artist| &artist.name).map(String::as_str).collect::<Vec<_>>().join(" ");
         let r#type = TrackType::Spotify;
         let domain = url.domain().map(str::to_string);
-        let img_url = track.album.images.iter().max_by(|i, i2| {
+        let img_url = track.album.images.into_iter().max_by(|i, i2| {
             i.height.unwrap_or(0).cmp(&i2.height.unwrap_or(0))
-        }).map(|img| img.url.clone());
+        }).map(|img| img.url);
 
         let mut search_string = String::new();
         search_string.push_str(&format!("{} {}", title, artists));
@@ -420,7 +420,7 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
                     ctx.say(format!("Enqueuing {} tracks from Spotify", tracks.len())).await?;
 
-                    ytdl_tracks.append(&mut tracks.iter().map(|track| {
+                    ytdl_tracks.append(&mut tracks.into_iter().map(|track| {
                         TrackWrapper::from_spotify(track, http_client.clone(), &parsed_url)
                     }).collect())
                 }
