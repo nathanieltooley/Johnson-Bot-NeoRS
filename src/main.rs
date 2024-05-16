@@ -84,6 +84,9 @@ async fn main() {
             commands::basic::test_interaction(),
             commands::gamble::rock_paper_scissors(),
             commands::music::play(),
+            commands::music::pause(),
+            commands::music::resume(),
+            commands::music::skip()
         ],
         ..Default::default()
     };

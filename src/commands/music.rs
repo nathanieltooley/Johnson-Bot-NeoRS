@@ -349,14 +349,8 @@ fn create_song_embed(metadata: &TrackMetadata) -> CreateEmbed {
     }
 }
 
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command, on_error = "error_handle", guild_only)]
 pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
-    if ctx.guild().is_none() {
-        ctx.reply("Cannot run this command outside of a guild")
-            .await?;
-        return Ok(());
-    }
-
     ctx.defer().await?;
 
     let parsed_url = match Url::parse(&url) {
@@ -498,6 +492,66 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
             )?;
         }
 
+    }
+
+    Ok(())
+}
+
+#[poise::command(slash_command, on_error = "error_handle")]
+pub async fn skip(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = match ctx.guild_id() {
+        Some(g) => g,
+        None => {
+            ctx.say("Cannot run this command outside of a Guild").await?;
+            return Ok(());
+        }
+    };
+
+    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+
+    if let Some(call) = manager.get(guild_id) {
+        let handler = call.lock().await;
+        let queue = handler.queue();
+        let _result = queue.skip();
+
+        ctx.say("Skipped current song!").await?;
+    } else {
+        ctx.say("Not currently in a voice channel!").await?;
+    }
+
+    Ok(())
+}
+
+#[poise::command(slash_command, on_error = "error_handle", guild_only)]
+pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+
+    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+
+    if let Some(call) = manager.get(guild_id) {
+        let lock = call.lock().await;
+        let queue = lock.queue();
+        let _ = queue.pause();
+
+        ctx.say("Paused current song!").await?;
+    } else {
+        ctx.say("Not currently in a voice channel").await?;
+    }
+
+    Ok(())
+}
+
+#[poise::command(slash_command, on_error = "error_handle", guild_only)]
+pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+
+    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+
+    if let Some(call) = manager.get(guild_id) {
+        let lock = call.lock().await;
+        let _ = lock.queue().resume();
+
+        ctx.say("Resuming current song!").await?;
     }
 
     Ok(())
