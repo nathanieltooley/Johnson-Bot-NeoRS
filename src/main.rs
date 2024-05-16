@@ -15,7 +15,7 @@ use std::process::exit;
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
-use rspotify::{ClientCredsSpotify, Credentials};
+use rspotify::ClientCredsSpotify;
 use songbird::SerenityInit;
 
 use custom_types::command::{Data, Error, KeywordResponse};

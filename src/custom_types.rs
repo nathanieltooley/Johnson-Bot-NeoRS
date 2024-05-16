@@ -2,7 +2,7 @@ pub mod command {
     use mongodb::Client;
     use poise::serenity_prelude::prelude::TypeMapKey;
     use reqwest::Client as HttpClient;
-    use rspotify::{clients::BaseClient, ClientCredsSpotify};
+    use rspotify::ClientCredsSpotify;
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize, Clone)]

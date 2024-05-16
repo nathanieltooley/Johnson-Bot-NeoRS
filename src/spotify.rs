@@ -1,4 +1,4 @@
-use futures::{StreamExt, TryStreamExt};
+use futures::TryStreamExt;
 use rspotify::{ 
     clients::BaseClient, 
     model::{FullTrack, IdError, PlaylistId, TrackId, Type, PlaylistItem}, 

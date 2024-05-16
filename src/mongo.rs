@@ -6,13 +6,13 @@ use mongodb::{
     options::{ClientOptions, FindOneAndUpdateOptions, ReturnDocument},
     Client, Collection,
 };
-use poise::serenity_prelude::{self, model::user, Context, GuildId, UserId};
+use poise::serenity_prelude::{self, Context, GuildId, UserId};
 use serde::de::DeserializeOwned;
 use tracing::{debug, info, instrument};
 
 use crate::custom_types::{command::SerenityCtxData, mongo_schema::User};
 use crate::utils;
-use crate::{custom_types::command::Context as JContext, utils::math};
+use crate::custom_types::command::Context as JContext;
 
 static DB_NAME: &str = "Johnson";
 
@@ -458,27 +458,7 @@ pub fn validate_user_exp(user: &User) -> bool {
     let exp = user.exp;
     let next_exp = level_to_exp(next_level);
 
-    return exp >= min_exp && exp <= next_exp;
-}
-
-// TODO: Write custom transaction that will check for level changes while changing exp
-#[instrument(skip(mongo_client))]
-pub async fn give_user_exp<'a>(
-    mongo_client: &'a Client,
-    guild_id: GuildId,
-    user_id: UserId,
-    amount: i64,
-) -> Result<bool, mongodb::error::Error> {
-    todo!()
-}
-
-pub async fn set_user_exp<'a>(
-    mongo_client: &'_ Client,
-    guild_id: GuildId,
-    user_id: UserId,
-    amount: i64,
-) -> Result<bool, mongodb::error::Error> {
-    todo!()
+    exp >= min_exp && exp <= next_exp
 }
 
 #[instrument(skip_all)]

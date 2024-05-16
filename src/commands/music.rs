@@ -3,7 +3,7 @@ use poise::serenity_prelude::{
     async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http, Message
 };
 use rspotify::model::FullTrack;
-use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, YoutubeDl};
+use songbird::input::{AudioStreamError, Compose, YoutubeDl};
 use songbird::tracks::{PlayMode, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
-use crate::spotify::{self, get_tracks_from_url};
+use crate::spotify::get_tracks_from_url;
 
 static DRIVER_EVENTS_ADDED: AtomicBool = AtomicBool::new(false);
 

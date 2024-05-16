@@ -1,5 +1,5 @@
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{filter, layer, prelude::*};
+use tracing_subscriber::{filter, prelude::*};
 pub fn log_init() {
     let stdout_layer = tracing_subscriber::fmt::layer()
         // .pretty()

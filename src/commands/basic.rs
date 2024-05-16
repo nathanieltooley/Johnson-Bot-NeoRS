@@ -1,10 +1,10 @@
-use crate::custom_types::command::{Context, Data, Error};
+use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
 use poise::serenity_prelude::{
     CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
     EditMessage,
 };
-use tracing::{debug, info, instrument};
+use tracing::{info, instrument};
 
 #[poise::command(slash_command, prefix_command)]
 #[instrument(name = "ping", skip_all)]
