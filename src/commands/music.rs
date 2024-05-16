@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use poise::serenity_prelude::{
-    async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http
+    async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http, Message
 };
 use rspotify::model::FullTrack;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, YoutubeDl};
@@ -38,6 +38,8 @@ static SONG_MESSAGE_COLOR_MAP: Lazy<HashMap<&str, Color>> = Lazy::new(|| {
 
     m
 });
+
+static LAST_NOW_PLAYING_MESSAGE: Lazy<Mutex<Option<Message>>> = Lazy::new(|| Mutex::new(None)); 
 
 #[derive(Clone)]
 struct TrackMetadata {
@@ -238,8 +240,18 @@ impl EventHandler for TrackNotifier {
                     )
                     .await;
 
-                if let Err(e) = track_message_result {
-                    error!("Could not send track play notification message: {e:?}");
+                match track_message_result {
+                    Err(e) => error!("Could not send track play notification message {e:?}"),
+                    Ok(message) => {
+                        // Delete and replace previous now playing message
+                        if Lazy::get(&LAST_NOW_PLAYING_MESSAGE).is_some() {
+                            let mut lock = LAST_NOW_PLAYING_MESSAGE.lock().await;
+                            let last_message = lock.as_mut().unwrap();
+                            let _ = last_message.delete(&self.http_handle).await;
+                        } 
+
+                        *LAST_NOW_PLAYING_MESSAGE.lock().await = Some(message);                            
+                    }
                 }
             }
         }
