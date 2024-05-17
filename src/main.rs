@@ -18,7 +18,7 @@ use poise::Command;
 use rspotify::ClientCredsSpotify;
 use songbird::SerenityInit;
 
-use custom_types::command::{Data, Error, KeywordResponse};
+use custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData, PartialData};
 use events::Handler;
 use spotify::spotify_init;
 use tracing::{debug, info, error};
@@ -127,6 +127,11 @@ async fn main() {
 
     let http_client = reqwest::Client::new();
 
+    let serenity_data = PartialData {
+        johnson_handle: mongo_client.clone(),
+        kwr: kw_responses.clone()
+    };
+
     // Build framework
     let framework = poise::Framework::builder()
         .options(fw_opts)
@@ -157,6 +162,12 @@ async fn main() {
         .expect("Client should be built correctly");
 
     info!("Client has been built successfully!");
+
+    {
+        let mut data = client.data.write().await;
+
+        data.insert::<SerenityCtxData>(serenity_data);
+    }
 
     // Start client
     client.start().await.expect("Client error");

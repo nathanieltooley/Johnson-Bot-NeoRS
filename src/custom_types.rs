@@ -45,6 +45,11 @@ pub mod command {
         pub spotify_client: ClientCredsSpotify
     }
 
+    pub struct PartialData {
+        pub johnson_handle: Client,
+        pub kwr: Vec<KeywordResponse>
+    }
+
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
     pub type Error = Box<dyn std::error::Error + Send + Sync>;
     // Poise context constructed with custom Data and Error types
@@ -52,7 +57,7 @@ pub mod command {
 
     pub struct SerenityCtxData;
     impl TypeMapKey for SerenityCtxData {
-        type Value = Data;
+        type Value = PartialData;
     }
 }
 
