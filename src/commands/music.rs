@@ -2,6 +2,7 @@ use once_cell::sync::Lazy;
 use poise::serenity_prelude::{
     async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http, Message
 };
+use poise::CreateReply;
 use rspotify::model::FullTrack;
 use songbird::input::{AudioStreamError, Compose, YoutubeDl};
 use songbird::tracks::{PlayMode, Track};
@@ -578,7 +579,11 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command, on_error = "error_handle", guild_only)]
-pub async fn queue(ctx: Context<'_>, count: Option<usize>) -> Result<(), Error> {
+pub async fn queue(
+    ctx: Context<'_>, 
+    #[max = 10]
+    count: Option<usize>) -> Result<(), Error> 
+{
     let guild_id = ctx.guild_id().unwrap();
 
     let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
@@ -586,7 +591,6 @@ pub async fn queue(ctx: Context<'_>, count: Option<usize>) -> Result<(), Error> 
     ctx.defer().await?;
 
     if let Some(call) = manager.get(guild_id) {
-        debug!("trying to get lock");
         let lock = call.lock().await;
         let queue = lock.queue().current_queue();
 
@@ -596,18 +600,27 @@ pub async fn queue(ctx: Context<'_>, count: Option<usize>) -> Result<(), Error> 
 
         ctx.say(format!("Queue contains {} songs", queue.len())).await?;
 
-        let count = min(count.unwrap_or(100), queue.len());
+        let count = min(count.unwrap_or(10), queue.len());
 
         let map_lock = TRACK_METADATA_MAP.lock().await;
 
+        let embed = CreateEmbed::new().title("Queue");
+        let mut description = String::new();
+
+        description.push_str("`Now Playing => ");
         (0..count).for_each(|i| {
             let meta = map_lock.get(&queue[i].uuid());
             let default_string = String::from("No Metadata");
             let title = meta.map(|m| &m.title).unwrap_or(&default_string); 
             let artists = meta.map(|m| &m.artists).unwrap_or(&default_string);
 
-            debug!("{} : {}", title, artists);
+            description.push_str(&format!("{} - {}\n", title, artists)); 
         });
+
+        description.push('`');
+        let embed = embed.description(description);
+
+        ctx.send(CreateReply { content: None, embeds: vec![embed], ..Default::default()}).await?;
     }
 
     Ok(())
