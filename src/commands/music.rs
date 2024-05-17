@@ -11,9 +11,11 @@ use tracing::{debug, error, info, warn};
 use url::Url;
 use uuid::Uuid;
 
+use std::cmp::min;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
@@ -461,21 +463,25 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
         for ytdl in ytdl_tracks {
 
+            // let start = Instant::now();
+
             let title = &ytdl.metadata.title;
             let author = &ytdl.metadata.artists;
 
             // Create track here so we can get the UUID
             // and insert it into the map before it gets played
+            
             let track = Track::new(ytdl.ytdl.into());
-
             let track_meta = Arc::new(ytdl.metadata.clone());
+
 
             TRACK_METADATA_MAP
                 .lock()
                 .await
                 .insert(track.uuid, track_meta.clone());
 
-            let t_handle = h_lock.enqueue(track).await;
+            let q = Instant::now();
+            let t_handle = h_lock.enqueue_with_preload(track, None);
 
             if tracks_len == 1 {
                 ctx.say(format!("Enqueuing `{}`, by `{}`", title, author))
@@ -502,6 +508,8 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
                     track_meta: Arc::clone(&track_meta),
                 },
             )?;
+
+            // debug!("Took {} seconds to queue song", start.elapsed().as_secs());
         }
 
     }
@@ -564,6 +572,42 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
         let _ = lock.queue().resume();
 
         ctx.say("Resuming current song!").await?;
+    }
+
+    Ok(())
+}
+
+#[poise::command(slash_command, on_error = "error_handle", guild_only)]
+pub async fn queue(ctx: Context<'_>, count: Option<usize>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+
+    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+
+    ctx.defer().await?;
+
+    if let Some(call) = manager.get(guild_id) {
+        debug!("trying to get lock");
+        let lock = call.lock().await;
+        let queue = lock.queue().current_queue();
+
+        if queue.is_empty() {
+            ctx.say("Queue is empty!").await?;
+        }
+
+        ctx.say(format!("Queue contains {} songs", queue.len())).await?;
+
+        let count = min(count.unwrap_or(100), queue.len());
+
+        let map_lock = TRACK_METADATA_MAP.lock().await;
+
+        (0..count).for_each(|i| {
+            let meta = map_lock.get(&queue[i].uuid());
+            let default_string = String::from("No Metadata");
+            let title = meta.map(|m| &m.title).unwrap_or(&default_string); 
+            let artists = meta.map(|m| &m.artists).unwrap_or(&default_string);
+
+            debug!("{} : {}", title, artists);
+        });
     }
 
     Ok(())
