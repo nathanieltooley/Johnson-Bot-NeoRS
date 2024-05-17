@@ -86,7 +86,8 @@ async fn main() {
             commands::music::play(),
             commands::music::pause(),
             commands::music::resume(),
-            commands::music::skip()
+            commands::music::skip(),
+            commands::music::queue()
         ],
         ..Default::default()
     };
