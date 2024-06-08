@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
 use std::time::Instant;
+use rand::{thread_rng, Rng};
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
@@ -621,6 +622,36 @@ pub async fn queue(
         let embed = embed.description(description);
 
         ctx.send(CreateReply { content: None, embeds: vec![embed], ..Default::default()}).await?;
+    }
+
+    Ok(())
+}
+
+#[poise::command(slash_command, on_error = "error_handle", guild_only)]
+pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+
+    let _ = ctx.defer().await;
+
+    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+
+    if let Some(call) = manager.get(guild_id) {
+        let lock = call.lock().await;
+        let queue_len = lock.queue().len();
+        lock.queue().modify_queue(|queue| {
+            // Fisher-Yates shuffle
+            // start at one to ignore the first song in the queue (the currently playing song)
+            for i in 1..queue_len {
+                let mut rand = thread_rng();
+                let r_index = rand.gen_range(1..queue.len()); 
+                
+                queue.swap(i, r_index);
+            }
+        });
+
+        ctx.say(format!("Shuffled {} songs!", queue_len)).await?;
+    } else {
+        ctx.say("There is no queue to shuffle!").await?;
     }
 
     Ok(())
