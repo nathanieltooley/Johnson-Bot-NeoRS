@@ -8,6 +8,7 @@ use songbird::input::{AudioStreamError, Compose, YoutubeDl};
 use songbird::tracks::{PlayMode, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
+use tracing::field::debug;
 use tracing::{debug, error, info, warn};
 use url::Url;
 use uuid::Uuid;
@@ -519,22 +520,34 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, on_error = "error_handle")]
-pub async fn skip(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = match ctx.guild_id() {
-        Some(g) => g,
-        None => {
-            ctx.say("Cannot run this command outside of a Guild").await?;
-            return Ok(());
-        }
-    };
+#[poise::command(slash_command, on_error = "error_handle", guild_only)]
+pub async fn skip(ctx: Context<'_>, count: Option<u32>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().unwrap();
+
+    ctx.defer().await?;
 
     let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
 
     if let Some(call) = manager.get(guild_id) {
         let handler = call.lock().await;
         let queue = handler.queue();
-        let _result = queue.skip();
+
+        let _ = queue.skip();
+
+        let count = count.unwrap_or(1);
+
+        handler.queue().modify_queue(|m_q| {
+            for _ in 0..count {
+                // if queue.is_empty() {
+                //     break;
+                // }
+
+                let track = m_q.pop_front().unwrap();
+                debug!("Skipped track: {:?}", track);
+            }
+        });
+
+        queue.resume()?;
 
         ctx.say("Skipped current song!").await?;
     } else {
