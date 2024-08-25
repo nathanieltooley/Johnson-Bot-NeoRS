@@ -1,14 +1,14 @@
 use futures::TryStreamExt;
-use rspotify::{ 
-    clients::BaseClient, 
-    model::{FullTrack, IdError, PlaylistId, TrackId, Type, PlaylistItem}, 
-    http::HttpError, 
-    ClientCredsSpotify, ClientError, Credentials 
-};
-use url::Url;
-use std::error::Error;
 use futures_util::pin_mut;
+use rspotify::{
+    clients::BaseClient,
+    http::HttpError,
+    model::{FullTrack, IdError, PlaylistId, PlaylistItem, TrackId, Type},
+    ClientCredsSpotify, ClientError, Credentials,
+};
+use std::error::Error;
 use tracing::debug;
+use url::Url;
 
 use crate::custom_types::command::Error as CmdError;
 
@@ -17,7 +17,7 @@ pub enum JohnsonSpotifyError {
     InvalidDomain,
     IdError(IdError),
     UnsupportedIdType(Type),
-    ClientError(ClientError)
+    ClientError(ClientError),
 }
 
 impl Error for JohnsonSpotifyError {}
@@ -28,30 +28,38 @@ impl std::fmt::Display for JohnsonSpotifyError {
                 write!(f, "The provided URL has an invalid domain type")
             }
             JohnsonSpotifyError::IdError(e) => {
-                write!(f, "A problem occured when trying to parse spotify ID: {}", e)
+                write!(
+                    f,
+                    "A problem occured when trying to parse spotify ID: {}",
+                    e
+                )
             }
             JohnsonSpotifyError::UnsupportedIdType(t) => {
-                write!(f, "This type of Spotify ID is not supported for playback: {}", t)
+                write!(
+                    f,
+                    "This type of Spotify ID is not supported for playback: {}",
+                    t
+                )
             }
-            JohnsonSpotifyError::ClientError(c) => {
-                match c {
-                    ClientError::Http(error) => {
-                        match **error {
-                            HttpError::StatusCode(ref response) => {
-                                if response.status() == 404 {
-                                    write!(f, "Could not find the requested Spotify resource. If it is a playlist, check to make sure it is public.")
-                                } else {
-                                    write!(f, "Spotify Client got {} status code", response.status())
-                                }
-                            }
-                            _ => write!(f, "An error occured while trying to use the client: {}", error)
+            JohnsonSpotifyError::ClientError(c) => match c {
+                ClientError::Http(error) => match **error {
+                    HttpError::StatusCode(ref response) => {
+                        if response.status() == 404 {
+                            write!(f, "Could not find the requested Spotify resource. If it is a playlist, check to make sure it is public.")
+                        } else {
+                            write!(f, "Spotify Client got {} status code", response.status())
                         }
                     }
-                    _ => {
-                        write!(f, "An error occured while trying to use the client: {}", c)
-                    }
+                    _ => write!(
+                        f,
+                        "An error occured while trying to use the client: {}",
+                        error
+                    ),
+                },
+                _ => {
+                    write!(f, "An error occured while trying to use the client: {}", c)
                 }
-            }
+            },
         }
     }
 }
@@ -70,27 +78,33 @@ impl From<ClientError> for JohnsonSpotifyError {
 
 struct SpotifyURI {
     spotify_type: Type,
-    id: String
+    id: String,
 }
 
 impl SpotifyURI {
     pub fn from_uri_str(uri: &str) -> Result<SpotifyURI, JohnsonSpotifyError> {
         let (spotify_type, id) = rspotify::model::parse_uri(uri)?;
-        Ok(SpotifyURI {spotify_type, id: id.to_string()})
+        Ok(SpotifyURI {
+            spotify_type,
+            id: id.to_string(),
+        })
     }
 
     pub fn from_url(url: &Url) -> Result<SpotifyURI, JohnsonSpotifyError> {
         let uri = url_to_uri_str(url)?;
         let (spotify_type, id) = rspotify::model::parse_uri(&uri)?;
 
-        Ok(SpotifyURI {spotify_type, id: id.to_string()})
+        Ok(SpotifyURI {
+            spotify_type,
+            id: id.to_string(),
+        })
     }
 }
 
-pub async fn spotify_init() -> Result<ClientCredsSpotify, CmdError>  {
+pub async fn spotify_init() -> Result<ClientCredsSpotify, CmdError> {
     let creds = Credentials::from_env().expect("spotify creds envs should exist");
     let spotify = ClientCredsSpotify::new(creds);
-    spotify.request_token().await?; 
+    spotify.request_token().await?;
 
     Ok(spotify)
 }
@@ -115,38 +129,45 @@ pub fn url_to_uri_str(url: &Url) -> Result<String, JohnsonSpotifyError> {
     Ok(uri)
 }
 
-pub async fn get_tracks_from_url(spotify_client: &ClientCredsSpotify, url: &Url) -> Result<Vec<FullTrack>, JohnsonSpotifyError> {
+pub async fn get_tracks_from_url(
+    spotify_client: &ClientCredsSpotify,
+    url: &Url,
+) -> Result<Vec<FullTrack>, JohnsonSpotifyError> {
     let uri = SpotifyURI::from_url(url)?;
 
     match uri.spotify_type {
         Type::Track => {
-            let track = spotify_client.track(TrackId::from_id(uri.id)?, None).await?; 
+            let track = spotify_client
+                .track(TrackId::from_id(uri.id)?, None)
+                .await?;
             Ok(vec![track])
         }
         Type::Playlist => {
-            let playlist = spotify_client.playlist(PlaylistId::from_id(uri.id.clone())?, None, None).await?;
+            let playlist = spotify_client
+                .playlist(PlaylistId::from_id(uri.id.clone())?, None, None)
+                .await?;
             debug!("Was sent playlist: {}", playlist.name);
-            let playlist_stream = spotify_client.playlist_items(PlaylistId::from_id(uri.id)?, None, None);
+            let playlist_stream =
+                spotify_client.playlist_items(PlaylistId::from_id(uri.id)?, None, None);
             pin_mut!(playlist_stream);
 
             let items = playlist_stream.try_collect::<Vec<PlaylistItem>>().await?;
 
-            let tracks: Vec<_> = items.into_iter().filter_map(|item| {
-                // Will try and get the track value or return None
-                // If there is a track, it will then return Some if the track is
-                // an actual song and not a podcast episode
-                item.track.and_then(|playable_item| match playable_item {
-                    rspotify::model::PlayableItem::Track(full_track) => {
-                        Some(full_track)
-                    }
-                    rspotify::model::PlayableItem::Episode(_) => None
+            let tracks: Vec<_> = items
+                .into_iter()
+                .filter_map(|item| {
+                    // Will try and get the track value or return None
+                    // If there is a track, it will then return Some if the track is
+                    // an actual song and not a podcast episode
+                    item.track.and_then(|playable_item| match playable_item {
+                        rspotify::model::PlayableItem::Track(full_track) => Some(full_track),
+                        rspotify::model::PlayableItem::Episode(_) => None,
+                    })
                 })
-            }).collect();
+                .collect();
 
             Ok(tracks)
         }
-        _ => {
-            Err(JohnsonSpotifyError::UnsupportedIdType(uri.spotify_type))
-        }
+        _ => Err(JohnsonSpotifyError::UnsupportedIdType(uri.spotify_type)),
     }
 }

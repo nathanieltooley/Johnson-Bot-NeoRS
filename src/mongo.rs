@@ -10,9 +10,9 @@ use poise::serenity_prelude::{self, Context, GuildId, UserId};
 use serde::de::DeserializeOwned;
 use tracing::{debug, info, instrument};
 
+use crate::custom_types::command::Context as JContext;
 use crate::custom_types::{command::SerenityCtxData, mongo_schema::User};
 use crate::utils;
-use crate::custom_types::command::Context as JContext;
 
 static DB_NAME: &str = "Johnson";
 

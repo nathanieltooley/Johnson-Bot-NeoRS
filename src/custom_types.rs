@@ -42,12 +42,12 @@ pub mod command {
         pub johnson_handle: Client,
         pub kwr: Vec<KeywordResponse>,
         pub http: HttpClient,
-        pub spotify_client: ClientCredsSpotify
+        pub spotify_client: ClientCredsSpotify,
     }
 
     pub struct PartialData {
         pub johnson_handle: Client,
-        pub kwr: Vec<KeywordResponse>
+        pub kwr: Vec<KeywordResponse>,
     }
 
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)

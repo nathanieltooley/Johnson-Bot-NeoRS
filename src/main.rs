@@ -4,8 +4,8 @@ mod custom_types;
 mod events;
 mod logging;
 mod mongo;
-mod utils;
 mod spotify;
+mod utils;
 
 use std::env;
 use std::fs::File;
@@ -18,10 +18,10 @@ use poise::Command;
 use rspotify::ClientCredsSpotify;
 use songbird::SerenityInit;
 
-use custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData, PartialData};
+use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 use events::Handler;
 use spotify::spotify_init;
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -37,7 +37,7 @@ impl<'a> CommandRegistering {
         j_handle: Client,
         kwr: Vec<KeywordResponse>,
         http: reqwest::Client,
-        spotify: ClientCredsSpotify
+        spotify: ClientCredsSpotify,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         match self {
             // Register the commands globally
@@ -47,7 +47,7 @@ impl<'a> CommandRegistering {
                     johnson_handle: j_handle,
                     kwr,
                     http,
-                    spotify_client: spotify
+                    spotify_client: spotify,
                 })
             }
             // Register commands for every provided guild
@@ -60,7 +60,7 @@ impl<'a> CommandRegistering {
                     johnson_handle: j_handle,
                     kwr,
                     http,
-                    spotify_client: spotify
+                    spotify_client: spotify,
                 })
             }
         }
@@ -108,7 +108,7 @@ async fn main() {
             error!("Could not get access token for Spotify: {e:?}");
             exit(1);
         }
-        Ok(s) => s
+        Ok(s) => s,
     };
 
     // KWR Config File
@@ -130,7 +130,7 @@ async fn main() {
 
     let serenity_data = PartialData {
         johnson_handle: mongo_client.clone(),
-        kwr: kw_responses.clone()
+        kwr: kw_responses.clone(),
     };
 
     // Build framework
@@ -147,7 +147,7 @@ async fn main() {
                         mongo_client,
                         kw_responses,
                         http_client,
-                        spotify
+                        spotify,
                     )
                     .await
             })

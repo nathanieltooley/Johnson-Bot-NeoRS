@@ -1,11 +1,12 @@
 use once_cell::sync::Lazy;
 use poise::serenity_prelude::{
-    async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http, Message
+    async_trait, ChannelId, Color, CreateEmbed, CreateEmbedFooter, CreateMessage, GuildId, Http,
+    Message,
 };
 use poise::CreateReply;
 use rspotify::model::FullTrack;
 use songbird::input::{AudioStreamError, Compose, YoutubeDl};
-use songbird::tracks::{PlayMode, Track};
+use songbird::tracks::{PlayMode, Queued, Track};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler, TrackEvent};
 use tokio::sync::{Mutex, MutexGuard};
 use tracing::field::debug;
@@ -13,12 +14,12 @@ use tracing::{debug, error, info, warn};
 use url::Url;
 use uuid::Uuid;
 
+use rand::{thread_rng, Rng};
 use std::cmp::min;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 use std::sync::Arc;
 use std::time::Instant;
-use rand::{thread_rng, Rng};
 
 use crate::custom_types::command::{Context, Error};
 use crate::events::error_handle;
@@ -44,7 +45,7 @@ static SONG_MESSAGE_COLOR_MAP: Lazy<HashMap<&str, Color>> = Lazy::new(|| {
     m
 });
 
-static LAST_NOW_PLAYING_MESSAGE: Lazy<Mutex<Option<Message>>> = Lazy::new(|| Mutex::new(None)); 
+static LAST_NOW_PLAYING_MESSAGE: Lazy<Mutex<Option<Message>>> = Lazy::new(|| Mutex::new(None));
 
 #[derive(Clone)]
 struct TrackMetadata {
@@ -52,25 +53,28 @@ struct TrackMetadata {
     artists: String,
     r#type: TrackType,
     domain: Option<String>,
-    img_url: Option<String>
+    img_url: Option<String>,
 }
 
 #[derive(Clone, PartialEq)]
 enum TrackType {
     Ytdl,
-    Spotify
+    Spotify,
 }
 
 struct TrackWrapper {
     ytdl: YoutubeDl,
-    metadata: TrackMetadata
+    metadata: TrackMetadata,
 }
 
 impl TrackWrapper {
-    pub async fn from_ytdl(mut ytdl: YoutubeDl, url: &Url) -> Result<TrackWrapper, AudioStreamError> {
+    pub async fn from_ytdl(
+        mut ytdl: YoutubeDl,
+        url: &Url,
+    ) -> Result<TrackWrapper, AudioStreamError> {
         let meta = ytdl.aux_metadata().await?;
 
-        let title = meta.title.unwrap_or(String::from("No Title Found")); 
+        let title = meta.title.unwrap_or(String::from("No Title Found"));
         let artists = meta.artist.unwrap_or(String::from("No Artists Found"));
         let r#type = TrackType::Ytdl;
         let domain = url.domain().map(str::to_string);
@@ -81,7 +85,7 @@ impl TrackWrapper {
             artists,
             r#type,
             domain,
-            img_url
+            img_url,
         };
 
         Ok(TrackWrapper { ytdl, metadata })
@@ -89,12 +93,21 @@ impl TrackWrapper {
 
     pub fn from_spotify(track: FullTrack, http_client: reqwest::Client, url: &Url) -> TrackWrapper {
         let title = track.name;
-        let artists = track.artists.iter().map(|artist| &artist.name).map(String::as_str).collect::<Vec<_>>().join(" ");
+        let artists = track
+            .artists
+            .iter()
+            .map(|artist| &artist.name)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(" ");
         let r#type = TrackType::Spotify;
         let domain = url.domain().map(str::to_string);
-        let img_url = track.album.images.into_iter().max_by(|i, i2| {
-            i.height.unwrap_or(0).cmp(&i2.height.unwrap_or(0))
-        }).map(|img| img.url);
+        let img_url = track
+            .album
+            .images
+            .into_iter()
+            .max_by(|i, i2| i.height.unwrap_or(0).cmp(&i2.height.unwrap_or(0)))
+            .map(|img| img.url);
 
         let mut search_string = String::new();
         search_string.push_str(&format!("{} {}", title, artists));
@@ -104,13 +117,12 @@ impl TrackWrapper {
             artists,
             r#type,
             domain,
-            img_url
+            img_url,
         };
-
 
         let ytdl = YoutubeDl::new_search(http_client, search_string);
 
-        TrackWrapper {ytdl, metadata}
+        TrackWrapper { ytdl, metadata }
     }
 }
 
@@ -166,13 +178,9 @@ impl EventHandler for TrackEventHandler {
         if let EventContext::Track(track_list) = ctx {
             for (t_state, t_handle) in *track_list {
                 // &Option<String> -> Option<&String>
-                let title = &self
-                    .track_meta
-                    .title;
+                let title = &self.track_meta.title;
 
-                let artist = &self
-                    .track_meta
-                    .artists;
+                let artist = &self.track_meta.artists;
 
                 info!(
                     "Track {} : {} updated to state: {:?}",
@@ -205,13 +213,9 @@ impl EventHandler for TrackErrorHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         if let EventContext::Track(track_list) = ctx {
             for (t_state, _t_handle) in *track_list {
-                let title = &self
-                    .track_meta
-                    .title;
+                let title = &self.track_meta.title;
 
-                let artist = &self
-                    .track_meta
-                    .artists;
+                let artist = &self.track_meta.artists;
 
                 info!(
                     "Track {} : {} Encountered an error: {:?}",
@@ -253,15 +257,26 @@ impl EventHandler for TrackNotifier {
                             let mut lock = LAST_NOW_PLAYING_MESSAGE.lock().await;
                             let last_message = lock.as_mut().unwrap();
                             let _ = last_message.delete(&self.http_handle).await;
-                        } 
+                        }
 
-                        *LAST_NOW_PLAYING_MESSAGE.lock().await = Some(message);                            
+                        *LAST_NOW_PLAYING_MESSAGE.lock().await = Some(message);
                     }
                 }
             }
         }
 
         None
+    }
+}
+
+fn shuffle_queue(queue: &mut VecDeque<Queued>) {
+    // Fisher-Yates shuffle
+    // start at one to ignore the first song in the queue (the currently playing song)
+    for i in 1..queue.len() {
+        let mut rand = thread_rng();
+        let r_index = rand.gen_range(1..queue.len());
+
+        queue.swap(i, r_index);
     }
 }
 
@@ -336,22 +351,16 @@ async fn attach_event_handlers(voice_lock: &mut MutexGuard<'_, Call>) {
 
 fn create_song_embed(metadata: &TrackMetadata) -> CreateEmbed {
     let color = *SONG_MESSAGE_COLOR_MAP
-        .get(
-            metadata.domain.as_deref().unwrap_or("")
-        )
+        .get(metadata.domain.as_deref().unwrap_or(""))
         .unwrap_or(&Color::GOLD);
-    
+
     let embed = CreateEmbed::new()
         .title(format!("NOW PLAYING: {}", metadata.title))
-        .field(
-            "Song Artist: ",
-            &metadata.artists,
-            false,
-        )
+        .field("Song Artist: ", &metadata.artists, false)
         .color(color);
 
     // Add a disclamier
-    let embed =  {
+    let embed = {
         if metadata.r#type == TrackType::Spotify {
             embed.footer(CreateEmbedFooter::new("NOTE: THIS SONG MAY BE WRONG AS IT WAS TAKEN FROM YOUTUBE RATHER THAN SPOTIFY DIRECTLY"))
         } else {
@@ -367,7 +376,7 @@ fn create_song_embed(metadata: &TrackMetadata) -> CreateEmbed {
 }
 
 #[poise::command(slash_command, on_error = "error_handle", guild_only)]
-pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
+pub async fn play(ctx: Context<'_>, url: String, shuffle: Option<bool>) -> Result<(), Error> {
     ctx.defer().await?;
 
     let parsed_url = match Url::parse(&url) {
@@ -407,34 +416,40 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
     let mut ytdl_tracks: Vec<TrackWrapper> = Vec::new();
 
     match parsed_url.host() {
-        Some(h) => {
-            match h.to_string().as_str() {
-                "youtube.com" | "youtu.be" => {
-                    debug!("User passed in Youtube link");
+        Some(h) => match h.to_string().as_str() {
+            "youtube.com" | "youtu.be" => {
+                debug!("User passed in Youtube link");
 
-                    let http_client = ctx.data().http.clone();
+                let http_client = ctx.data().http.clone();
 
-                    ytdl_tracks.push(TrackWrapper::from_ytdl(YoutubeDl::new(http_client, url), &parsed_url).await?);
-                }
-                "open.spotify.com" => {
-                    let spotify = &ctx.data().spotify_client;
-                    let http_client = &ctx.data().http;
-                    let tracks = get_tracks_from_url(spotify, &parsed_url).await?;
-
-                    debug!("Enqueuing {} tracks from spotify", tracks.len());
-
-                    ctx.say(format!("Enqueuing {} tracks from Spotify", tracks.len())).await?;
-
-                    ytdl_tracks.append(&mut tracks.into_iter().map(|track| {
-                        TrackWrapper::from_spotify(track, http_client.clone(), &parsed_url)
-                    }).collect())
-                }
-                _ => {
-                    ctx.say("Invalid URL").await?;
-                    return Ok(());
-                }
+                ytdl_tracks.push(
+                    TrackWrapper::from_ytdl(YoutubeDl::new(http_client, url), &parsed_url).await?,
+                );
             }
-        }
+            "open.spotify.com" => {
+                let spotify = &ctx.data().spotify_client;
+                let http_client = &ctx.data().http;
+                let tracks = get_tracks_from_url(spotify, &parsed_url).await?;
+
+                debug!("Enqueuing {} tracks from spotify", tracks.len());
+
+                ctx.say(format!("Enqueuing {} tracks from Spotify", tracks.len()))
+                    .await?;
+
+                ytdl_tracks.append(
+                    &mut tracks
+                        .into_iter()
+                        .map(|track| {
+                            TrackWrapper::from_spotify(track, http_client.clone(), &parsed_url)
+                        })
+                        .collect(),
+                )
+            }
+            _ => {
+                ctx.say("Invalid URL").await?;
+                return Ok(());
+            }
+        },
         None => {
             ctx.say("Invalid URL").await?;
             return Ok(());
@@ -465,7 +480,6 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
         let tracks_len = ytdl_tracks.len();
 
         for ytdl in ytdl_tracks {
-
             // let start = Instant::now();
 
             let title = &ytdl.metadata.title;
@@ -473,17 +487,15 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
 
             // Create track here so we can get the UUID
             // and insert it into the map before it gets played
-            
+
             let track = Track::new(ytdl.ytdl.into());
             let track_meta = Arc::new(ytdl.metadata.clone());
-
 
             TRACK_METADATA_MAP
                 .lock()
                 .await
                 .insert(track.uuid, track_meta.clone());
 
-            let q = Instant::now();
             let t_handle = h_lock.enqueue_with_preload(track, None);
 
             if tracks_len == 1 {
@@ -511,10 +523,13 @@ pub async fn play(ctx: Context<'_>, url: String) -> Result<(), Error> {
                     track_meta: Arc::clone(&track_meta),
                 },
             )?;
-
-            // debug!("Took {} seconds to queue song", start.elapsed().as_secs());
         }
 
+        let shuffle = shuffle.unwrap_or(false);
+
+        if shuffle {
+            h_lock.queue().modify_queue(shuffle_queue);
+        }
     }
 
     Ok(())
@@ -526,7 +541,9 @@ pub async fn skip(ctx: Context<'_>, count: Option<u32>) -> Result<(), Error> {
 
     ctx.defer().await?;
 
-    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("songbird should be initialized");
 
     if let Some(call) = manager.get(guild_id) {
         let handler = call.lock().await;
@@ -561,7 +578,9 @@ pub async fn skip(ctx: Context<'_>, count: Option<u32>) -> Result<(), Error> {
 pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("songbird should be initialized");
 
     if let Some(call) = manager.get(guild_id) {
         let lock = call.lock().await;
@@ -580,7 +599,9 @@ pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("songbird should be initialized");
 
     if let Some(call) = manager.get(guild_id) {
         let lock = call.lock().await;
@@ -593,14 +614,12 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command, on_error = "error_handle", guild_only)]
-pub async fn queue(
-    ctx: Context<'_>, 
-    #[max = 10]
-    count: Option<usize>) -> Result<(), Error> 
-{
+pub async fn queue(ctx: Context<'_>, #[max = 10] count: Option<usize>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
 
-    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("songbird should be initialized");
 
     ctx.defer().await?;
 
@@ -612,7 +631,8 @@ pub async fn queue(
             ctx.say("Queue is empty!").await?;
         }
 
-        ctx.say(format!("Queue contains {} songs", queue.len())).await?;
+        ctx.say(format!("Queue contains {} songs", queue.len()))
+            .await?;
 
         let count = min(count.unwrap_or(10), queue.len());
 
@@ -625,16 +645,21 @@ pub async fn queue(
         (0..count).for_each(|i| {
             let meta = map_lock.get(&queue[i].uuid());
             let default_string = String::from("No Metadata");
-            let title = meta.map(|m| &m.title).unwrap_or(&default_string); 
+            let title = meta.map(|m| &m.title).unwrap_or(&default_string);
             let artists = meta.map(|m| &m.artists).unwrap_or(&default_string);
 
-            description.push_str(&format!("{} - {}\n", title, artists)); 
+            description.push_str(&format!("{} - {}\n", title, artists));
         });
 
         description.push('`');
         let embed = embed.description(description);
 
-        ctx.send(CreateReply { content: None, embeds: vec![embed], ..Default::default()}).await?;
+        ctx.send(CreateReply {
+            content: None,
+            embeds: vec![embed],
+            ..Default::default()
+        })
+        .await?;
     }
 
     Ok(())
@@ -646,22 +671,14 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
 
     let _ = ctx.defer().await;
 
-    let manager = songbird::get(ctx.serenity_context()).await.expect("songbird should be initialized");
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .expect("songbird should be initialized");
 
     if let Some(call) = manager.get(guild_id) {
         let lock = call.lock().await;
         let queue_len = lock.queue().len();
-        lock.queue().modify_queue(|queue| {
-            // Fisher-Yates shuffle
-            // start at one to ignore the first song in the queue (the currently playing song)
-            for i in 1..queue_len {
-                let mut rand = thread_rng();
-                let r_index = rand.gen_range(1..queue.len()); 
-                
-                queue.swap(i, r_index);
-            }
-        });
-
+        lock.queue().modify_queue(shuffle_queue);
         ctx.say(format!("Shuffled {} songs!", queue_len)).await?;
     } else {
         ctx.say("There is no queue to shuffle!").await?;

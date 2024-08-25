@@ -2,12 +2,10 @@ use poise::serenity_prelude::{
     self, ComponentInteractionDataKind, Content, CreateButton, CreateInteractionResponse,
     CreateInteractionResponseMessage, CreateMessage, Mentionable, Message, UserId,
 };
-use poise::CreateReply;
 use serenity_prelude::futures::StreamExt;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::Duration;
-use tokio::time::sleep;
 use tracing::{debug, info, instrument};
 
 use crate::custom_types::command::{Context, Error};
@@ -41,6 +39,12 @@ enum RpsResult {
     Win,
     Loss,
     Tie,
+}
+
+enum SlotOptions {
+    SkullNBones(u32),
+    Diamonds(u32),
+    Sevens(u32),
 }
 
 async fn get_participant_choice(
@@ -356,4 +360,17 @@ pub async fn rock_paper_scissors(
     }
 
     Ok(())
+}
+
+#[instrument(skip_all)]
+#[poise::command(slash_command, on_error = "error_handle")]
+pub async fn slots(ctx: Context<'_>, bet: u64) -> Result<(), Error> {
+    // Create a handful of different options (probably emojis)
+
+    // Randomly select an option 3 times
+
+    // Show the slots visually
+
+    // If theres a three of a kind, make a certain amount of money
+    todo!();
 }

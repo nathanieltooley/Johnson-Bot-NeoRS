@@ -25,7 +25,9 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
                 error
             );
 
-            ctx.say(format!("An error has occurred: {}", error)).await.unwrap();
+            ctx.say(format!("An error has occurred: {}", error))
+                .await
+                .unwrap();
         }
         _ => {
             error!("Oh dear, we have an error {:?}", error)
