@@ -102,7 +102,11 @@ impl SpotifyURI {
 }
 
 pub async fn spotify_init() -> Result<ClientCredsSpotify, CmdError> {
-    let creds = Credentials::from_env().expect("spotify creds envs should exist");
+    let creds = Credentials::new(
+        &std::env::var("RSPOTIFY_CLIENT_ID").expect("spotify id should be an env"),
+        &std::env::var("RSPOTIFY_CLIENT_SECRET").expect("spotify secret should be an env"),
+    );
+
     let spotify = ClientCredsSpotify::new(creds);
     spotify.request_token().await?;
 
