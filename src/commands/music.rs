@@ -417,7 +417,7 @@ pub async fn play(ctx: Context<'_>, url: String, shuffle: Option<bool>) -> Resul
 
     match parsed_url.host() {
         Some(h) => match h.to_string().as_str() {
-            "youtube.com" | "youtu.be" => {
+            "www.youtube.com" | "www.youtu.be" | "youtube.com" | "youtu.be" => {
                 debug!("User passed in Youtube link");
 
                 let http_client = ctx.data().http.clone();
