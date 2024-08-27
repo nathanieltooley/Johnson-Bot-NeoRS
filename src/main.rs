@@ -94,7 +94,7 @@ async fn main() {
     };
 
     // MongoDB setup
-    let mongo_host = std::env::var("DISCORD_HOST")
+    let mongo_host = std::env::var("MONGO_CONN")
         .expect("Johnson should be able to find MONGO_HOST environment var");
     let mongo_client = mongo::receive_client(&mongo_host)
         .await
