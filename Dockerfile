@@ -9,7 +9,7 @@ RUN apt-get update
 RUN apt-get install -y pkg-config
 RUN apt-get install -y libssl-dev
 RUN apt-get install -y cmake
-RUN cargo build
+RUN cargo build --release --jobs=1
 
-CMD ["cargo", "run"]
+CMD ["cargo", "run", "--release"]
 

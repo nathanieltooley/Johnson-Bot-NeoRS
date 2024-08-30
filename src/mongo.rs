@@ -14,7 +14,7 @@ use crate::custom_types::command::Context as JContext;
 use crate::custom_types::{command::SerenityCtxData, mongo_schema::User};
 use crate::utils;
 
-static DB_NAME: &str = "Johnson";
+static DB_NAME: &str = "johnsondb";
 
 const XP_MULTIPLIER: f64 = 15566f64;
 const XP_TRANSLATION: f64 = 15000f64;
