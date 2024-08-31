@@ -277,13 +277,15 @@ impl<'context> ContextWrapper<'context> {
 pub async fn receive_client(mongo_uri: &str) -> Result<Client, mongodb::error::Error> {
     let mut client_options = ClientOptions::parse(mongo_uri).await?;
     client_options.app_name = Some("Johnson Bot RS".to_string());
+    client_options.default_database = Some(DB_NAME.to_owned());
 
     Client::with_options(client_options)
 }
 
 pub async fn get_user_collection(mongo_client: &Client, guild_id: GuildId) -> Collection<User> {
     mongo_client
-        .database(DB_NAME)
+        .default_database()
+        .expect("default database should be specified")
         .collection(&guild_id.to_string())
 }
 
