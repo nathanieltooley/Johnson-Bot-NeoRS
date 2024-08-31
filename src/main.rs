@@ -123,8 +123,20 @@ async fn main() {
     let kw_responses: Vec<KeywordResponse> =
         serde_json::from_reader(k_reader).expect("KWR File is not correct json");
 
+    let guilds = match std::env::var("LEVEL")
+        .unwrap_or(String::from("DEBUG"))
+        .as_str()
+    {
+        "PROD" => {
+            vec![GuildId::new(600162735975694356)]
+        }
+        _ => {
+            vec![GuildId::new(427299383474782208)]
+        }
+    };
+
     // Set register type
-    let registering = CommandRegistering::ByGuild(vec![GuildId::new(427299383474782208)]);
+    let registering = CommandRegistering::ByGuild(guilds);
 
     let http_client = reqwest::Client::new();
 
