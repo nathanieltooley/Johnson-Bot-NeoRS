@@ -1,6 +1,6 @@
 [
     {
-        "kw": "thank you",
+        "kws": ["thank you", "thanks"],
         "response": "You're welcome!"
     },
     {
