@@ -131,7 +131,10 @@ async fn main() {
         .as_str()
     {
         "PROD" => {
-            vec![GuildId::new(600162735975694356)]
+            vec![
+                GuildId::new(600162735975694356),
+                GuildId::new(1276784436494733382),
+            ]
         }
         _ => {
             vec![GuildId::new(427299383474782208)]
