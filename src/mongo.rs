@@ -113,7 +113,7 @@ impl<'context> ContextWrapper<'context> {
         }
     }
 
-    pub fn new_classic<'a>(ctx: &'context Context, guild_id: GuildId) -> Self {
+    pub fn new_classic(ctx: &'context Context, guild_id: GuildId) -> Self {
         ContextWrapper {
             ctx: ContextType::Classic(ctx, guild_id),
         }
@@ -210,7 +210,7 @@ impl<'context> ContextWrapper<'context> {
     ) -> Result<(), mongodb::error::Error> {
         let user_col = get_user_collection(&self.get_client().await, self.get_guild_id()).await;
 
-        if let None = self.get_user(user_id).await? {
+        if (self.get_user(user_id).await?).is_none() {
             create_new_user(&user_col, user_id, user_nick).await?;
             debug!("New user created! {}:{}", user_id, user_nick);
             Ok(())
@@ -226,13 +226,11 @@ impl<'context> ContextWrapper<'context> {
         let user_col = get_user_collection(&self.get_client().await, self.get_guild_id()).await;
 
         match self.get_user(user.id).await? {
-            Some(user) => {
-                return Ok(user);
-            }
+            Some(user) => Ok(user),
             None => {
                 let user = create_new_user(&user_col, user.id, &user.name).await?;
                 info!("New user created! {}", user.discord_id);
-                return Ok(user);
+                Ok(user)
             }
         }
     }
@@ -300,8 +298,8 @@ where
     cursor.try_collect::<Vec<T>>().await
 }
 
-pub async fn get_users<'a>(
-    mongo_client: &'a Client,
+pub async fn get_users(
+    mongo_client: &Client,
     guild_id: GuildId,
 ) -> Result<Vec<User>, mongodb::error::Error> {
     let user_col = get_user_collection(mongo_client, guild_id).await;
@@ -318,10 +316,7 @@ pub async fn get_user(
     debug!("Attempting to get user: {}", user_id);
     let user_col = get_user_collection(mongo_client, guild_id).await;
     user_col
-        .find_one(
-            doc! {"discord_id": TryInto::<i64>::try_into(user_id).unwrap()},
-            None,
-        )
+        .find_one(doc! {"discord_id": Into::<i64>::into(user_id)}, None)
         .await
 }
 
@@ -345,10 +340,7 @@ pub async fn get_user_from_col(
     user_id: UserId,
 ) -> Result<Option<User>, mongodb::error::Error> {
     user_col
-        .find_one(
-            doc! {"discord_id": TryInto::<i64>::try_into(user_id).unwrap()},
-            None,
-        )
+        .find_one(doc! {"discord_id": Into::<i64>::into(user_id)}, None)
         .await
 }
 
@@ -435,7 +427,7 @@ pub async fn set_user_money<'a>(
 }
 
 pub fn level_to_exp(l: i64) -> i64 {
-    // I use two as "hacks" since Into and TryInto didn't want to work
+    // I use two "as" "hacks" since Into and TryInto didn't want to work
     // I feel like i64 should be able to go into f64 (at least through TryInto) but whatever
     //
     // Looking into it, this seems like the best way to do it other than
