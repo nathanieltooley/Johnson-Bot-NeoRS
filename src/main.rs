@@ -17,11 +17,12 @@ use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
 use rspotify::ClientCredsSpotify;
 use songbird::SerenityInit;
+use tokio::sync::Mutex;
+use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 use events::Handler;
 use spotify::spotify_init;
-use tracing::{debug, error, info};
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -77,7 +78,8 @@ async fn main() {
         std::env::var("TOKEN").expect("Johnson should be able to find TOKEN environment var");
     let intents = serenity::GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::GUILD_MEMBERS;
     let fw_opts = poise::FrameworkOptions {
         commands: vec![
             commands::basic::ping(),
@@ -89,6 +91,7 @@ async fn main() {
             commands::music::skip(),
             commands::music::queue(),
             commands::music::shuffle(),
+            commands::roles::set_welcome_role(),
         ],
         ..Default::default()
     };
@@ -143,6 +146,7 @@ async fn main() {
     let serenity_data = PartialData {
         johnson_handle: mongo_client.clone(),
         kwr: kw_responses.clone(),
+        welcome_role: None,
     };
 
     // Build framework

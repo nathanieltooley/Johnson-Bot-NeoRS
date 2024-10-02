@@ -1,6 +1,7 @@
 pub mod command {
+    use crate::serenity::prelude::TypeMapKey;
     use mongodb::Client;
-    use poise::serenity_prelude::prelude::TypeMapKey;
+    use poise::serenity_prelude::Role;
     use reqwest::Client as HttpClient;
     use rspotify::ClientCredsSpotify;
     use serde::Deserialize;
@@ -48,6 +49,7 @@ pub mod command {
     pub struct PartialData {
         pub johnson_handle: Client,
         pub kwr: Vec<KeywordResponse>,
+        pub welcome_role: Option<Role>,
     }
 
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)

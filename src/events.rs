@@ -1,4 +1,6 @@
-use poise::serenity_prelude::{Context, CreateMessage, EventHandler, GuildId, Message, Ready};
+use poise::serenity_prelude::{
+    Context, CreateMessage, EventHandler, GuildId, Member, Message, Ready,
+};
 use poise::{async_trait, FrameworkError};
 
 use rand::distributions::{Distribution, WeightedIndex};
@@ -9,6 +11,8 @@ use tracing::{debug, error, info, instrument};
 use crate::checks::slurs;
 use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use crate::mongo::ContextWrapper;
+
+#[derive(Debug)]
 pub struct Handler;
 
 const MONEY_MIN: i64 = 5;
@@ -46,7 +50,7 @@ fn single_keyword_regex(kw: &str) -> Regex {
     Regex::new(&format!(r"(^|\b)({})($|\>)", kw)).unwrap()
 }
 
-fn multi_keyword_regex(kws: &Vec<String>) -> Regex {
+fn multi_keyword_regex(kws: &[String]) -> Regex {
     let mut alternate_string = String::new();
 
     for i in 0..kws.len() {
@@ -62,13 +66,13 @@ fn multi_keyword_regex(kws: &Vec<String>) -> Regex {
     Regex::new(&format!(r"(^|\b)({})($|\>)", alternate_string)).unwrap()
 }
 
-fn random_choice_unweighted(responses: &Vec<String>) -> &String {
+fn random_choice_unweighted(responses: &[String]) -> &String {
     let rand_index = rand::thread_rng().gen_range(0..responses.len());
 
     &responses[rand_index]
 }
 
-fn random_choice_weighted<'a>(responses: &'a Vec<String>, weights: &Vec<f32>) -> &'a String {
+fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'a String {
     // Only errors if len of weights is 0
     let weighted_dist = WeightedIndex::new(weights).unwrap();
 
@@ -377,9 +381,28 @@ impl EventHandler for Handler {
             let read_lock = ctx.data.read().await;
             let kw_responses = &read_lock.get::<SerenityCtxData>().unwrap().kwr;
 
-            debug!("{:?}", kw_responses);
-
             keyword_response(&ctx, &message, kw_responses).await;
+        }
+    }
+
+    #[instrument()]
+    async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
+        let data_lock = ctx.data.read().await;
+        let welcome_role = &data_lock.get::<SerenityCtxData>().unwrap().welcome_role;
+        let welcome_role = welcome_role.as_ref();
+
+        debug!("Welcome role: {:?}", welcome_role);
+
+        if let Some(role) = welcome_role {
+            if let Err(err) = new_member.add_role(ctx.http, role.id).await {
+                error!("{:?}", err);
+            } else {
+                info!(
+                    "Set user role on join: {} -> {}",
+                    new_member.display_name(),
+                    role.id
+                );
+            }
         }
     }
 }
