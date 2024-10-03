@@ -9,5 +9,7 @@ pub async fn set_welcome_role(ctx: Context<'_>, welcome_role: Role) -> Result<()
     let client = ContextWrapper::new_slash(ctx);
     client.save_welcome_role(welcome_role.id).await?;
 
+    ctx.reply("Set role!").await?;
+
     Ok(())
 }

@@ -325,6 +325,11 @@ impl<'context> ContextWrapper<'context> {
             )
             .await?;
 
+        info!(
+            "Set the welcome role of guild {} to id {}",
+            guild_id_raw, role
+        );
+
         Ok(())
     }
 
