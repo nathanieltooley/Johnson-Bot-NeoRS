@@ -80,19 +80,26 @@ async fn main() {
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MEMBERS;
+
+    let commands = vec![
+        commands::basic::ping(),
+        commands::basic::test_interaction(),
+        commands::gamble::rock_paper_scissors(),
+        commands::music::play(),
+        commands::music::pause(),
+        commands::music::resume(),
+        commands::music::skip(),
+        commands::music::queue(),
+        commands::music::shuffle(),
+        commands::roles::set_welcome_role(),
+    ];
+
+    commands
+        .iter()
+        .for_each(|cmd| info!("Loading command: {}", cmd.name));
+
     let fw_opts = poise::FrameworkOptions {
-        commands: vec![
-            commands::basic::ping(),
-            commands::basic::test_interaction(),
-            commands::gamble::rock_paper_scissors(),
-            commands::music::play(),
-            commands::music::pause(),
-            commands::music::resume(),
-            commands::music::skip(),
-            commands::music::queue(),
-            commands::music::shuffle(),
-            commands::roles::set_welcome_role(),
-        ],
+        commands,
         ..Default::default()
     };
 
