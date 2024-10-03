@@ -3,14 +3,14 @@ use std::f64::consts::E;
 use futures::{stream::TryStreamExt, FutureExt};
 use mongodb::{
     bson::{doc, Bson, DateTime, Document},
-    options::{ClientOptions, FindOneAndUpdateOptions, ReturnDocument},
+    options::{ClientOptions, FindOneAndReplaceOptions, FindOneAndUpdateOptions, ReturnDocument},
     Client, Collection,
 };
-use poise::serenity_prelude::{self, Context, GuildId, UserId};
+use poise::serenity_prelude::{self, Context, GuildId, Role, RoleId, UserId};
 use serde::de::DeserializeOwned;
 use tracing::{debug, info, instrument};
 
-use crate::custom_types::command::Context as JContext;
+use crate::custom_types::{command::Context as JContext, mongo_schema::ServerConfig};
 use crate::custom_types::{command::SerenityCtxData, mongo_schema::User};
 use crate::utils;
 
@@ -268,6 +268,71 @@ impl<'context> ContextWrapper<'context> {
         info!("Added {amount} to {}:{}", m_user2.name, m_user2.discord_id);
 
         Ok(())
+    }
+
+    #[instrument(skip_all)]
+    async fn get_server_conf_collection(&self) -> Result<Collection<ServerConfig>, MongoError> {
+        let db = self
+            .get_client()
+            .await
+            .default_database()
+            .expect("default db should be set");
+
+        Ok(db.collection("ServerConf"))
+    }
+
+    #[instrument(skip_all)]
+    async fn get_server_conf(&self) -> Result<ServerConfig, MongoError> {
+        let guild_id_raw: i64 = self.get_guild_id().into();
+        let server_conf_col = self.get_server_conf_collection().await?;
+        let server_conf = server_conf_col
+            .find_one(
+                doc! {
+                    "guild_id": guild_id_raw
+                },
+                None,
+            )
+            .await?;
+
+        match server_conf {
+            Some(sc) => Ok(sc),
+            None => {
+                let default_sc = ServerConfig {
+                    guild_id: guild_id_raw,
+                    welcome_role_id: None,
+                };
+
+                Ok(default_sc)
+            }
+        }
+    }
+
+    #[instrument(skip_all)]
+    pub async fn save_welcome_role(&self, role: RoleId) -> Result<(), MongoError> {
+        let guild_id_raw: i64 = self.get_guild_id().into();
+        let server_conf_col = self.get_server_conf_collection().await?;
+
+        let mut server_conf = self.get_server_conf().await?;
+        server_conf.welcome_role_id = Some(role.into());
+
+        let _ = server_conf_col
+            .find_one_and_replace(
+                doc! {
+                    "guild_id": guild_id_raw
+                },
+                server_conf,
+                Some(FindOneAndReplaceOptions::builder().upsert(true).build()),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    pub async fn get_welcome_role(&self) -> Result<Option<RoleId>, MongoError> {
+        let server_conf = self.get_server_conf().await?;
+
+        Ok(server_conf.welcome_role_id.map(RoleId::new))
     }
 }
 

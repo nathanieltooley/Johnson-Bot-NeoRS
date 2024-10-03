@@ -387,20 +387,22 @@ impl EventHandler for Handler {
 
     #[instrument()]
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-        let data_lock = ctx.data.read().await;
-        let welcome_role = &data_lock.get::<SerenityCtxData>().unwrap().welcome_role;
-        let welcome_role = welcome_role.as_ref();
-
+        let db_helper = ContextWrapper::new_classic(&ctx, new_member.guild_id);
+        let welcome_role = db_helper.get_welcome_role().await;
         debug!("Welcome role: {:?}", welcome_role);
 
-        if let Some(role) = welcome_role {
-            if let Err(err) = new_member.add_role(ctx.http, role.id).await {
+        if let Err(ref err) = welcome_role {
+            error!("Couldn't get welcome role: {:?}", err)
+        }
+
+        if let Ok(Some(role)) = welcome_role {
+            if let Err(err) = new_member.add_role(ctx.http, role).await {
                 error!("{:?}", err);
             } else {
                 info!(
                     "Set user role on join: {} -> {}",
                     new_member.display_name(),
-                    role.id
+                    role
                 );
             }
         }

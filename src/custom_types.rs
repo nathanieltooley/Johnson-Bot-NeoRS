@@ -81,4 +81,10 @@ pub mod mongo_schema {
         pub inventory: Option<Vec<Document>>,
         pub stroke_count: Option<u32>,
     }
+
+    #[derive(Debug, Serialize, Deserialize, Clone)]
+    pub struct ServerConfig {
+        pub guild_id: i64,
+        pub welcome_role_id: Option<u64>,
+    }
 }
