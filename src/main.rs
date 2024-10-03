@@ -17,7 +17,6 @@ use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
 use rspotify::ClientCredsSpotify;
 use songbird::SerenityInit;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
