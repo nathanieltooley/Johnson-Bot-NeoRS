@@ -93,10 +93,11 @@ jobs:
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
 
   deploy:
+    needs: build
     runs-on: ubuntu-22.04
     steps:
       - name: Push to dokku
         uses: dokku/github-action@master
         with:
-          git_remote_url: ${{ secrets.GIT_REMOTE_URL }}
+          git_remote_url: ${{ secrets.REMOTE_GIT_URL }}
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
