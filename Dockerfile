@@ -12,7 +12,7 @@ RUN apt-get update
 
 # I dont want to download python just for yt-dlp
 # however, the standalone binaries would not cooperate with me
-# TODO: Figure out how to standalone yt-dlp binaries
+#  TODO: Figure out how to standalone yt-dlp binaries
 RUN apt-get install -y python3
 RUN apt-get install -y python3-pip
 RUN pip3 install yt-dlp
