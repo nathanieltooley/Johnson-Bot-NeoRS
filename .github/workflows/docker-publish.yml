@@ -101,3 +101,4 @@ jobs:
         with:
           git_remote_url: ${{ secrets.REMOTE_GIT_URL }}
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          deploy_docker_image: ${{ env.IMAGE_NAME }}
