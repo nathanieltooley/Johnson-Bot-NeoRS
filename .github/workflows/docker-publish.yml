@@ -96,11 +96,6 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-      - name: Cloning repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
       - name: Push to dokku
         uses: dokku/github-action@master
         with:
