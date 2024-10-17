@@ -78,6 +78,9 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
+      - name: Debug output
+        run: echo ${{ needs.build.outputs.digest }}
+
       - name: Push to dokku
         uses: dokku/github-action@master
         with:
