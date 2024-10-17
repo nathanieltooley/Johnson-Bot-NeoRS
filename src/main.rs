@@ -16,7 +16,7 @@ use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
 use rspotify::ClientCredsSpotify;
-use songbird::SerenityInit;
+// use songbird::SerenityInit;
 use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
@@ -80,16 +80,19 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MEMBERS;
 
+    // let music_commands = vec![
+    //     commands::music::play(),
+    //     commands::music::pause(),
+    //     commands::music::resume(),
+    //     commands::music::skip(),
+    //     commands::music::queue(),
+    //     commands::music::shuffle(),
+    // ];
+
     let commands = vec![
         commands::basic::ping(),
         commands::basic::test_interaction(),
         commands::gamble::rock_paper_scissors(),
-        commands::music::play(),
-        commands::music::pause(),
-        commands::music::resume(),
-        commands::music::skip(),
-        commands::music::queue(),
-        commands::music::shuffle(),
         commands::roles::set_welcome_role(),
     ];
 
@@ -182,7 +185,7 @@ async fn main() {
     // Build client
     let mut client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
-        .register_songbird()
+        // .register_songbird()
         .event_handler(Handler)
         .await
         .expect("Client should be built correctly");
