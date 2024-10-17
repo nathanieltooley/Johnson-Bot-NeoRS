@@ -15,7 +15,8 @@ RUN apt-get install -y libssl-dev
 
 RUN cargo install --path .
 
-FROM debian:bullseye-slim
+# FROM debian:bullseye-slim
+FROM alpine:3.20
 
 # RUN apt-get update
 
