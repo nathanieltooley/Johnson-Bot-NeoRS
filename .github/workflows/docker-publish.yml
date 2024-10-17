@@ -28,7 +28,7 @@ jobs:
       # with sigstore/fulcio when running outside of PRs.
       id-token: write
     outputs:
-      digest: ${{ steps.meta.outputs.digest }}
+      digest: ${{ steps.build-and-push.outputs.digest }}
 
     steps:
       - name: Checkout repository
