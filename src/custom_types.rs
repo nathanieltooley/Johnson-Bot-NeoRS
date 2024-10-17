@@ -3,7 +3,6 @@ pub mod command {
     use mongodb::Client;
     use poise::serenity_prelude::Role;
     use reqwest::Client as HttpClient;
-    use rspotify::ClientCredsSpotify;
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize, Clone)]
@@ -43,7 +42,6 @@ pub mod command {
         pub johnson_handle: Client,
         pub kwr: Vec<KeywordResponse>,
         pub http: HttpClient,
-        pub spotify_client: ClientCredsSpotify,
     }
 
     pub struct PartialData {

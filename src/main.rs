@@ -4,7 +4,7 @@ mod custom_types;
 mod events;
 mod logging;
 mod mongo;
-mod spotify;
+// mod spotify;
 mod utils;
 
 use std::env;
@@ -15,13 +15,13 @@ use std::process::exit;
 use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
-use rspotify::ClientCredsSpotify;
+// use rspotify::ClientCredsSpotify;
 // use songbird::SerenityInit;
 use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 use events::Handler;
-use spotify::spotify_init;
+// use spotify::spotify_init;
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -37,7 +37,6 @@ impl<'a> CommandRegistering {
         j_handle: Client,
         kwr: Vec<KeywordResponse>,
         http: reqwest::Client,
-        spotify: ClientCredsSpotify,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
         match self {
             // Register the commands globally
@@ -47,7 +46,6 @@ impl<'a> CommandRegistering {
                     johnson_handle: j_handle,
                     kwr,
                     http,
-                    spotify_client: spotify,
                 })
             }
             // Register commands for every provided guild
@@ -60,7 +58,6 @@ impl<'a> CommandRegistering {
                     johnson_handle: j_handle,
                     kwr,
                     http,
-                    spotify_client: spotify,
                 })
             }
         }
@@ -115,13 +112,13 @@ async fn main() {
     info!("Mongo data successfully initialized");
 
     // Spotify setup
-    let spotify = match spotify_init().await {
-        Err(e) => {
-            error!("Could not get access token for Spotify: {e:?}");
-            exit(1);
-        }
-        Ok(s) => s,
-    };
+    // let spotify = match spotify_init().await {
+    //     Err(e) => {
+    //         error!("Could not get access token for Spotify: {e:?}");
+    //         exit(1);
+    //     }
+    //     Ok(s) => s,
+    // };
 
     // KWR Config File
     let working_dir = env::current_dir().unwrap();
@@ -175,7 +172,6 @@ async fn main() {
                         mongo_client,
                         kw_responses,
                         http_client,
-                        spotify,
                     )
                     .await
             })
