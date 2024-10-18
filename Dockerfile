@@ -24,11 +24,13 @@ RUN apt-get update
 # Runtime dependencies
 # RUN apt-get install -y --fix-missing libopus-dev
 # RUN apt-get install -y --fix-missing ffmpeg
-RUN apt-get install -y --fix-missing libssl-dev 
+RUN apt-get install -y --fix-missing libssl-dev
 
 COPY --from=builder /usr/local/cargo/bin/johnson-nrs /usr/local/bin/johnson-nrs
 COPY --from=builder /usr/local/src/resources/ ./resources/
 COPY --from=builder /usr/local/src/cfg/ ./cfg/
 
-CMD ["johnson-nrs"]
+COPY --from=builder /usr/local/src/Procfile ./Procfile
+COPY --from=builder /usr/local/src/DOKKU_SCALE ./DOKKU_SCALE
 
+CMD ["johnson-nrs"]
