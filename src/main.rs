@@ -68,10 +68,10 @@ impl<'a> CommandRegistering {
 
 #[tokio::main]
 async fn main() {
-    info!("Loading Johnson Bot v{VERSION}");
-
     // Init logging
     logging::log_init();
+
+    info!("Loading Johnson Bot v{VERSION}");
 
     // Configuration
     let token =
