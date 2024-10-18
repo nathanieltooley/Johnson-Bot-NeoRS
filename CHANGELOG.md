@@ -3,10 +3,10 @@
 **First Release!**
 
 ### Commands Added:
-commands::basic::ping(),
-commands::basic::test_interaction(),
-commands::gamble::rock_paper_scissors(),
-commands::roles::set_welcome_role(),
+- commands::basic::ping(),
+- commands::basic::test_interaction(),
+- commands::gamble::rock_paper_scissors(),
+- commands::roles::set_welcome_role(),
 
 ### Features Added:
 - Responds to keywords (currently controlled by `./cfg/kwr.json`)
