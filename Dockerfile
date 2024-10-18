@@ -31,6 +31,6 @@ COPY --from=builder /usr/local/src/resources/ ./resources/
 COPY --from=builder /usr/local/src/cfg/ ./cfg/
 
 COPY --from=builder /usr/local/src/Procfile ./Procfile
-COPY --from=builder /usr/local/src/DOKKU_SCALE ./DOKKU_SCALE
+COPY --from=builder /usr/local/src/app.json ./app.json
 
 CMD ["johnson-nrs"]
