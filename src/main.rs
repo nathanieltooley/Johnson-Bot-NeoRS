@@ -23,6 +23,8 @@ use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityC
 use events::Handler;
 // use spotify::spotify_init;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[allow(dead_code)]
 enum CommandRegistering {
     Global,
@@ -66,6 +68,8 @@ impl<'a> CommandRegistering {
 
 #[tokio::main]
 async fn main() {
+    info!("Loading Johnson Bot v{VERSION}");
+
     // Init logging
     logging::log_init();
 
