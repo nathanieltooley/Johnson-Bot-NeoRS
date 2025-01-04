@@ -74,16 +74,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Debug output
-        run: echo ${{ needs.build.outputs.digest }}
-
-      - name: Push to dokku
-        uses: dokku/github-action@master
-        with:
-          git_remote_url: ${{ secrets.REMOTE_GIT_URL }}
-          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-          deploy_docker_image: ${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
+  # deploy:
+  #   needs: build
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - name: Debug output
+  #       run: echo ${{ needs.build.outputs.digest }}
+  #
+  #     - name: Push to dokku
+  #       uses: dokku/github-action@master
+  #       with:
+  #         git_remote_url: ${{ secrets.REMOTE_GIT_URL }}
+  #         ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         deploy_docker_image: ${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
