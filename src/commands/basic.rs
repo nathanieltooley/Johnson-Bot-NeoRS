@@ -1,5 +1,5 @@
 use crate::custom_types::command::{Context, Error};
-use crate::events::error_handle;
+// use crate::events::error_handle;
 use poise::serenity_prelude::{
     CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
     EditMessage,
@@ -17,7 +17,8 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, on_error = "error_handle")]
+// #[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
     let interaction = match ctx {
         Context::Application(a) => a.interaction,

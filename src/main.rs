@@ -3,25 +3,21 @@ mod commands;
 mod custom_types;
 mod events;
 mod logging;
-mod mongo;
 // mod spotify;
+mod db;
 mod utils;
 
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
-use std::process::exit;
 
-use mongodb::Client;
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
-// use rspotify::ClientCredsSpotify;
-// use songbird::SerenityInit;
-use tracing::{debug, error, info};
+use sqlx::SqlitePool;
+use tracing::{debug, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 use events::Handler;
-// use spotify::spotify_init;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -36,7 +32,7 @@ impl<'a> CommandRegistering {
         &self,
         ctx: &serenity::Context,
         commands: &[Command<Data, Error>],
-        j_handle: Client,
+        db_conn: SqlitePool,
         kwr: Vec<KeywordResponse>,
         http: reqwest::Client,
     ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
@@ -44,11 +40,7 @@ impl<'a> CommandRegistering {
             // Register the commands globally
             CommandRegistering::Global => {
                 poise::builtins::register_globally(ctx, commands).await?;
-                Ok(Data {
-                    johnson_handle: j_handle,
-                    kwr,
-                    http,
-                })
+                Ok(Data { db_conn, kwr, http })
             }
             // Register commands for every provided guild
             CommandRegistering::ByGuild(guilds) => {
@@ -56,11 +48,7 @@ impl<'a> CommandRegistering {
                     // Deref and copy guild_id
                     poise::builtins::register_in_guild(ctx, commands, *guild).await?;
                 }
-                Ok(Data {
-                    johnson_handle: j_handle,
-                    kwr,
-                    http,
-                })
+                Ok(Data { db_conn, kwr, http })
             }
         }
     }
@@ -70,6 +58,7 @@ impl<'a> CommandRegistering {
 async fn main() {
     // Init logging
     logging::log_init();
+    dotenvy::dotenv().unwrap();
 
     info!("Loading Johnson Bot v{VERSION}");
 
@@ -80,6 +69,15 @@ async fn main() {
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MEMBERS;
+
+    let pool =
+        SqlitePool::connect(&env::var("DATABASE_URL").expect("missing DATABASE_URL env")).await;
+    let pool = pool.expect("could not init sqlite pool");
+
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("could not migrate sqlite");
 
     // let music_commands = vec![
     //     commands::music::play(),
@@ -105,15 +103,6 @@ async fn main() {
         commands,
         ..Default::default()
     };
-
-    // MongoDB setup
-    let mongo_host = std::env::var("MONGO_CONN_URL")
-        .expect("Johnson should be able to find MONGO_CONN_URL environment var");
-    let mongo_client = mongo::receive_client(&mongo_host)
-        .await
-        .expect("Johnson should be able to get MongoDB client");
-
-    info!("Mongo data successfully initialized");
 
     // Spotify setup
     // let spotify = match spotify_init().await {
@@ -155,9 +144,8 @@ async fn main() {
     let registering = CommandRegistering::ByGuild(guilds);
 
     let http_client = reqwest::Client::new();
-
     let serenity_data = PartialData {
-        johnson_handle: mongo_client.clone(),
+        db_conn: pool.clone(),
         kwr: kw_responses.clone(),
         welcome_role: None,
     };
@@ -173,7 +161,7 @@ async fn main() {
                     .register(
                         ctx,
                         &framework.options().commands,
-                        mongo_client,
+                        pool,
                         kw_responses,
                         http_client,
                     )

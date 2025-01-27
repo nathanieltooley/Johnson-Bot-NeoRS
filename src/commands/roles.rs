@@ -1,15 +1,20 @@
 use poise::serenity_prelude::Role;
 
 use crate::custom_types::command::{Context, Error};
+use crate::db::ContextWrapper;
 use crate::events::error_handle;
-use crate::mongo::ContextWrapper;
 
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn set_welcome_role(ctx: Context<'_>, welcome_role: Role) -> Result<(), Error> {
     let client = ContextWrapper::new_slash(ctx);
-    client.save_welcome_role(welcome_role.id).await?;
+    let guild_id = ctx.guild_id();
 
-    ctx.reply("Set role!").await?;
+    if let Some(guild_id) = guild_id {
+        client.save_welcome_role(guild_id, welcome_role.id).await?;
+        ctx.reply("Set role!").await?;
+    } else {
+        ctx.reply("Can't use this outside of a guild").await?;
+    }
 
     Ok(())
 }

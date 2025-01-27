@@ -152,6 +152,8 @@ impl<'context> ContextWrapper<'context> {
 
         // we do all of this in a transaction because we have to check the exp
         // and level multiple times
+        // TODO: Get rid of this transaction!
+        // this is only support with replica or sharded dbs
         session
             .with_transaction(
                 &user_col,

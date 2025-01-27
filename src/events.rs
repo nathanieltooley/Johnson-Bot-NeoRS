@@ -1,5 +1,5 @@
 use poise::serenity_prelude::{
-    Context, CreateMessage, EventHandler, GuildId, Member, Message, Ready,
+    Context, CreateMessage, EventHandler, GuildId, Member, Mentionable, Message, Ready,
 };
 use poise::{async_trait, FrameworkError};
 
@@ -10,7 +10,7 @@ use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
 use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
-use crate::mongo::ContextWrapper;
+use crate::db::{self, ContextWrapper};
 
 #[derive(Debug)]
 pub struct Handler;
@@ -95,61 +95,57 @@ async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
         .await
         .unwrap_or(message.author.name.clone());
 
-    if let Err(e) = db_helper.create_user_if_none(user_id, &user_nick).await {
-        error!("Error occuring when attempting to create new user: {:?}", e);
+    // we're fine to do this before the give_user_money call later because we won't use
+    // this older money value
+    let db_user = db_helper.get_user(&message.author).await;
+    if let Err(e) = db_user {
+        error!("Error occuring when attempting to get user: {:?}", e);
         // return here because we can't do the other operations without a user in the DB
         return;
     }
 
+    let db_user = db_user.unwrap();
+
     if let Err(e) = db_helper
-        .give_user_money(message.author.id, money_rand())
+        .give_user_money(&message.author, money_rand())
         .await
     {
         error!("Error occurred during message income: {:?}", e);
     }
 
-    let get_user_result = db_helper.get_user(message.author.id).await;
-
-    if let Err(e) = get_user_result {
-        error!("Error occured when trying to get user info: {:?}", e);
-        return;
-    }
-
-    // Panic:
-    // This would only panic if we did not have a user in the DB
-    // since we return early if there is an error with Mongo
-    let user_info = get_user_result
-        .expect("Error should've been handled already")
-        .expect("User should have been created already");
-
-    let actual_level = user_info.level;
+    let prev_level = db::exp_to_level(db_user.exp);
 
     // Give the user exp
     match db_helper
-        .give_user_exp(message.author.id, EXP_PER_MESSAGE)
+        .give_user_exp(&message.author, EXP_PER_MESSAGE)
         .await
     {
         Ok(res) => {
-            // User has leveled up!
-            if let Some(new_level) = res {
+            let new_level = db::exp_to_level(res);
+
+            if new_level > prev_level {
                 debug!(
                     "User {}'s level has changed from {} to {}!",
-                    user_info.name, actual_level, new_level
+                    message.author.mention(),
+                    prev_level,
+                    new_level
                 );
 
                 if let Err(e) = message
                     .reply_mention(
                         &ctx,
-                        format!("You leveled up from {} to {}!", actual_level, new_level),
+                        format!("You leveled up from {} to {}!", prev_level, new_level),
                     )
                     .await
                 {
                     error!(
                         "Error when trying to send message to {}: {:?}",
-                        user_info.name, e
+                        user_nick, e
                     );
                 }
             }
+
+            // User has leveled up!
         }
         Err(e) => {
             error!("Error when attempting to give user exp: {:?}", e);
@@ -181,8 +177,8 @@ async fn dad_bot_response(ctx: &Context, message: &Message) {
             // Trim off . or ,
             reply = &reply[0..reply.len() - 1];
         } else {
-            (_, reply) = message_content.split_at(im_match.end());
-            reply = reply.trim();
+            let (_, s) = message_content.split_at(im_match.end());
+            reply = s.trim();
         }
 
         match message
@@ -388,23 +384,29 @@ impl EventHandler for Handler {
     #[instrument()]
     async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
         let db_helper = ContextWrapper::new_classic(&ctx, new_member.guild_id);
-        let welcome_role = db_helper.get_welcome_role().await;
-        debug!("Welcome role: {:?}", welcome_role);
+        let server_conf = db_helper.get_server_conf(new_member.guild_id).await;
 
-        if let Err(ref err) = welcome_role {
-            error!("Couldn't get welcome role: {:?}", err)
-        }
-
-        if let Ok(Some(role)) = welcome_role {
-            if let Err(err) = new_member.add_role(ctx.http, role).await {
-                error!("{:?}", err);
-            } else {
-                info!(
-                    "Set user role on join: {} -> {}",
-                    new_member.display_name(),
-                    role
-                );
+        match server_conf {
+            Ok(conf) => {
+                if let Some(role) = conf.welcome_role_id {
+                    if let Err(err) = new_member.add_role(ctx.http, role as u64).await {
+                        error!("{:?}", err);
+                    } else {
+                        info!(
+                            "Set user role on join: {} -> {}",
+                            new_member.display_name(),
+                            role
+                        );
+                    }
+                }
             }
+            Err(e) => match e {
+                // do nothing if there is no row
+                sqlx::error::Error::RowNotFound => {}
+                _ => {
+                    error!("Couldn't get server config: {:?}", e)
+                }
+            },
         }
     }
 }

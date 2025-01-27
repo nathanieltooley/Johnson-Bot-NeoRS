@@ -1,9 +1,9 @@
 pub mod command {
     use crate::serenity::prelude::TypeMapKey;
-    use mongodb::Client;
     use poise::serenity_prelude::Role;
     use reqwest::Client as HttpClient;
     use serde::Deserialize;
+    use sqlx::SqlitePool;
 
     #[derive(Debug, Deserialize, Clone)]
     #[serde(untagged)]
@@ -39,13 +39,13 @@ pub mod command {
     #[derive(Debug)]
     // Custom data to send between commands
     pub struct Data {
-        pub johnson_handle: Client,
+        pub db_conn: SqlitePool,
         pub kwr: Vec<KeywordResponse>,
         pub http: HttpClient,
     }
 
     pub struct PartialData {
-        pub johnson_handle: Client,
+        pub db_conn: SqlitePool,
         pub kwr: Vec<KeywordResponse>,
         pub welcome_role: Option<Role>,
     }
@@ -62,27 +62,25 @@ pub mod command {
 }
 
 pub mod mongo_schema {
-    use mongodb::bson::{DateTime, Document};
     use serde::{Deserialize, Serialize};
+    use sqlx::prelude::FromRow;
 
-    #[derive(Debug, Serialize, Deserialize, Clone)]
-    pub struct User {
+    const XP_MULTIPLIER: f64 = 15566f64;
+    const XP_TRANSLATION: f64 = 15000f64;
+    const EXPO_MULTIPLIER: f64 = 0.0415;
+
+    #[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
+    pub struct DbUser {
         pub name: String,
-        pub discord_id: u64,
-        pub date_created: DateTime,
-        // I would use unsigned ints here but the Integer type
-        // in a mongodb server is i64
+        // user's discord id
+        pub id: i64,
         pub vbucks: i64,
         pub exp: i64,
-        pub level: i64,
-        pub slur_count: Option<Document>,
-        pub inventory: Option<Vec<Document>>,
-        pub stroke_count: Option<u32>,
     }
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct ServerConfig {
-        pub guild_id: i64,
-        pub welcome_role_id: Option<u64>,
+        pub id: i64,
+        pub welcome_role_id: Option<i64>,
     }
 }

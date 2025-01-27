@@ -9,8 +9,8 @@ use std::time::Duration;
 use tracing::{debug, info, instrument};
 
 use crate::custom_types::command::{Context, Error};
+use crate::db;
 use crate::events::error_handle;
-use crate::mongo;
 use crate::utils::message::interaction::wait_for_user_interaction;
 use crate::utils::message::{simple_channel_message, simple_message};
 
@@ -100,7 +100,7 @@ async fn get_participant_choice(
 pub async fn rock_paper_scissors(
     ctx: Context<'_>,
     #[description = "Who you're challenging"] opponent: serenity_prelude::User,
-    #[description = "What you're willing to wager"] wager: u64,
+    #[description = "What you're willing to wager"] wager: u32,
 ) -> Result<(), Error> {
     if ctx.guild_id().is_none() {
         return Ok(());
@@ -116,7 +116,7 @@ pub async fn rock_paper_scissors(
         _ => panic!("impossible"),
     };
 
-    let mongo_driver = mongo::ContextWrapper::new_slash(ctx);
+    let driver = db::ContextWrapper::new_slash(ctx);
     let guild_id = ctx.guild_id().unwrap();
     let author = ctx.author();
     let author_nick = author
@@ -168,11 +168,11 @@ pub async fn rock_paper_scissors(
         ),
     ]);
 
-    let author_mongo_user = mongo_driver.get_user_safe(&author).await?;
-    let opponent_mongo_user = mongo_driver.get_user_safe(&opponent).await?;
+    let author_mongo_user = driver.get_user(&author).await?;
+    let opponent_mongo_user = driver.get_user(&opponent).await?;
 
     debug!("Checking for author money");
-    if TryInto::<u64>::try_into(author_mongo_user.vbucks).unwrap() < wager {
+    if TryInto::<u32>::try_into(author_mongo_user.vbucks).unwrap() < wager {
         cmd_interaction
             .create_response(
                 ctx,
@@ -188,7 +188,7 @@ pub async fn rock_paper_scissors(
     }
 
     debug!("Checking for opponent money");
-    if TryInto::<u64>::try_into(opponent_mongo_user.vbucks).unwrap() < wager {
+    if TryInto::<u32>::try_into(opponent_mongo_user.vbucks).unwrap() < wager {
         cmd_interaction
             .create_response(
                 ctx,
@@ -331,8 +331,8 @@ pub async fn rock_paper_scissors(
                 .await?;
             // You Win!
             debug!("Attempting to give winnings to author");
-            mongo_driver
-                .player_transaction(&opponent, &author, wager)
+            driver
+                .user_transaction(&opponent, &author, wager.into())
                 .await?;
         }
         RpsResult::Tie => {
@@ -352,8 +352,8 @@ pub async fn rock_paper_scissors(
             simple_channel_message(&ctx, format!("{} Wins! :((", opponent.mention()).as_str())
                 .await?;
             debug!("Attempting to give winnings to opponent");
-            mongo_driver
-                .player_transaction(&author, &opponent, wager)
+            driver
+                .user_transaction(&author, &opponent, wager.into())
                 .await?;
             // You lose :((
         }
