@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "insert or ignore into users (name, id, vbucks, exp) values($1, $2, $3, $4) returning *",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "vbucks",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "exp",
+        "ordinal": 3,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1c6b39d4be4d655a7e8285018517a18ca017469269aa96cc52a9ae95a49a551d"
+}

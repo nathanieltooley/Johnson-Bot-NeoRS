@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE users SET vbucks = vbucks + $1 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "06b133cb13b9b6f820b2cc11eee759a3937e7bdf9d515c53b85c634a68ea0a1c"
+}

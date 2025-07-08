@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO server_config(id, welcome_role_id) \n        VALUES ($1, $2) \n        ON CONFLICT(id) \n        DO \n            UPDATE SET welcome_role_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "175a35cb53f87c8c3ef4432b8d9aebc1345b6f511aec977f910fcd817b9ec642"
+}
