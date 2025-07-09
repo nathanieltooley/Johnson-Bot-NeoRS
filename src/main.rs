@@ -29,7 +29,7 @@ enum CommandRegistering {
     ByGuild(Vec<GuildId>),
 }
 
-impl<'a> CommandRegistering {
+impl CommandRegistering {
     async fn register(
         &self,
         ctx: &serenity::Context,

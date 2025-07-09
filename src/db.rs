@@ -6,7 +6,6 @@ use crate::utils::math::round_to_100;
 
 use std::f64::consts::E;
 
-use poise::serenity_prelude::Guild;
 use poise::serenity_prelude::RoleId;
 use poise::serenity_prelude::User;
 use poise::serenity_prelude::{Context, GuildId};
@@ -231,10 +230,10 @@ pub fn exp_to_level(exp: i64) -> i64 {
 // ids as u64
 fn user_to_id(user: &User) -> i64 {
     let user_id: u64 = user.id.into();
-    return user_id as i64;
+    user_id as i64
 }
 
 fn guild_to_id(guild: GuildId) -> i64 {
     let guild_id: u64 = guild.into();
-    return guild_id as i64;
+    guild_id as i64
 }

@@ -20,7 +20,7 @@ pub mod interaction {
     };
     use std::time::Duration;
 
-    use crate::custom_types::command::{Context, Error};
+    use crate::custom_types::command::Context;
 
     pub async fn wait_for_user_interaction(
         ctx: &Context<'_>,

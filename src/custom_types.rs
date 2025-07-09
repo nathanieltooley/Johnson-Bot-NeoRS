@@ -65,10 +65,6 @@ pub mod mongo_schema {
     use serde::{Deserialize, Serialize};
     use sqlx::prelude::FromRow;
 
-    const XP_MULTIPLIER: f64 = 15566f64;
-    const XP_TRANSLATION: f64 = 15000f64;
-    const EXPO_MULTIPLIER: f64 = 0.0415;
-
     #[derive(Debug, Serialize, Deserialize, Clone, FromRow)]
     pub struct DbUser {
         pub name: String,

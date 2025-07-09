@@ -1,5 +1,5 @@
 use poise::serenity_prelude::{
-    self, ComponentInteractionDataKind, Content, CreateButton, CreateInteractionResponse,
+    self, ComponentInteractionDataKind, CreateButton, CreateInteractionResponse,
     CreateInteractionResponseMessage, CreateMessage, Mentionable, Message, UserId,
 };
 use serenity_prelude::futures::StreamExt;
@@ -12,7 +12,7 @@ use crate::custom_types::command::{Context, Error};
 use crate::db;
 use crate::events::error_handle;
 use crate::utils::message::interaction::wait_for_user_interaction;
-use crate::utils::message::{simple_channel_message, simple_message};
+use crate::utils::message::simple_channel_message;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 enum Rps {
@@ -130,13 +130,13 @@ pub async fn rock_paper_scissors(
         .unwrap_or(opponent.name.clone());
 
     let rps_message_comp_auth = CreateMessage::new()
-        .content(format!("Choose a Move {}!", author_nick))
+        .content(format!("Choose a Move {author_nick}!"))
         .button(CreateButton::new("rock").label("Rock"))
         .button(CreateButton::new("paper").label("Paper"))
         .button(CreateButton::new("scissors").label("Scissors"));
 
     let rps_message_comp_op = CreateMessage::new()
-        .content(format!("Choose a Move {}!", opponent_nick))
+        .content(format!("Choose a Move {opponent_nick}!"))
         .button(CreateButton::new("rock").label("Rock"))
         .button(CreateButton::new("paper").label("Paper"))
         .button(CreateButton::new("scissors").label("Scissors"));
@@ -168,7 +168,7 @@ pub async fn rock_paper_scissors(
         ),
     ]);
 
-    let author_mongo_user = driver.get_user(&author).await?;
+    let author_mongo_user = driver.get_user(author).await?;
     let opponent_mongo_user = driver.get_user(&opponent).await?;
 
     debug!("Checking for author money");
@@ -178,7 +178,7 @@ pub async fn rock_paper_scissors(
                 ctx,
                 CreateInteractionResponse::Message(
                     CreateInteractionResponseMessage::new()
-                        .content(format!("You do not have enough money for this wager!"))
+                        .content("You do not have enough money for this wager!")
                         .ephemeral(true),
                 ),
             )
@@ -318,8 +318,7 @@ pub async fn rock_paper_scissors(
     simple_channel_message(
         &ctx,
         format!(
-            "{} chose {:?}, while {} chose {:?}!",
-            author_nick, author_choice, opponent_nick, opponent_choice
+            "{author_nick} chose {author_choice:?}, while {opponent_nick} chose {opponent_choice:?}!",
         )
         .as_str(),
     )
@@ -332,7 +331,7 @@ pub async fn rock_paper_scissors(
             // You Win!
             debug!("Attempting to give winnings to author");
             driver
-                .user_transaction(&opponent, &author, wager.into())
+                .user_transaction(&opponent, author, wager.into())
                 .await?;
         }
         RpsResult::Tie => {

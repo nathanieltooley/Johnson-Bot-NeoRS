@@ -29,7 +29,7 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
                 error
             );
 
-            ctx.say(format!("An error has occurred: {}", error))
+            ctx.say(format!("An error has occurred: {error}"))
                 .await
                 .unwrap();
         }
@@ -47,7 +47,7 @@ fn money_rand() -> i64 {
 }
 
 fn single_keyword_regex(kw: &str) -> Regex {
-    Regex::new(&format!(r"(^|\b)({})($|\>)", kw)).unwrap()
+    Regex::new(&format!(r"(^|\b)({kw})($|\>)")).unwrap()
 }
 
 fn multi_keyword_regex(kws: &[String]) -> Regex {
@@ -63,7 +63,7 @@ fn multi_keyword_regex(kws: &[String]) -> Regex {
         alternate_string.push_str(&format!("{}|", kws[i]))
     }
 
-    Regex::new(&format!(r"(^|\b)({})($|\>)", alternate_string)).unwrap()
+    Regex::new(&format!(r"(^|\b)({alternate_string})($|\>)")).unwrap()
 }
 
 fn random_choice_unweighted(responses: &[String]) -> &String {
@@ -82,8 +82,6 @@ fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'
 #[instrument(skip_all, fields(guild_id, message=message.content))]
 async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
     let db_helper = ContextWrapper::new_classic(ctx, guild_id);
-
-    let user_id = message.author.id;
 
     // Try to get the nickname of the author
     // otherwise default to their username
@@ -134,7 +132,7 @@ async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
                 if let Err(e) = message
                     .reply_mention(
                         &ctx,
-                        format!("You leveled up from {} to {}!", prev_level, new_level),
+                        format!("You leveled up from {prev_level} to {new_level}!"),
                     )
                     .await
                 {
@@ -182,7 +180,7 @@ async fn dad_bot_response(ctx: &Context, message: &Message) {
         }
 
         match message
-            .reply(ctx, format!("Hi {}, I'm Johnson!", reply))
+            .reply(ctx, format!("Hi {reply}, I'm Johnson!"))
             .await
         {
             Err(e) => {

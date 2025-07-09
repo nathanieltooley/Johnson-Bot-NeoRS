@@ -2,7 +2,6 @@ use crate::custom_types::command::{Context, Error};
 // use crate::events::error_handle;
 use poise::serenity_prelude::{
     CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
-    EditMessage,
 };
 use tracing::{info, instrument};
 
