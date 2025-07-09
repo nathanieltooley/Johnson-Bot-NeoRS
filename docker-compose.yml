@@ -9,12 +9,26 @@ services:
       - DATABASE_URL=${DATABASE_URL}
     volumes:
       - sqlitedb:/usr/local/db
+    profiles: [release]
+
   watchtower:
     image: containrrr/watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.docker/config.json:/config.json
     command: --interval 30
+    profiles: [release]
+
+  debug-johnson-bot:
+    build: .
+    container_name: debug-johnson-rs
+    environment:
+      - TOKEN=${TOKEN}
+      - LEVEL=DEBUG
+      - DATABASE_URL=sqlite:///usr/local/db/johnson.db
+    volumes:
+      - sqlitedb:/usr/local/db
+    profiles: [debug]
 
 volumes:
   sqlitedb:
