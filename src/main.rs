@@ -10,11 +10,13 @@ mod utils;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
+use std::str::FromStr;
 
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
+use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::SqlitePool;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 use events::Handler;
@@ -58,7 +60,23 @@ impl<'a> CommandRegistering {
 async fn main() {
     // Init logging
     logging::log_init();
-    dotenvy::dotenv().unwrap();
+    let d_env_result = dotenvy::dotenv();
+
+    if let Err(err) = d_env_result {
+        match err {
+            dotenvy::Error::Io(io_error) => match io_error.kind() {
+                std::io::ErrorKind::NotFound => {
+                    info!("could not find .env file . . . skipping")
+                }
+                _ => {
+                    error!("io error during .env check: {}", io_error)
+                }
+            },
+            _ => {
+                error!("error occurred during .env check: {}", err)
+            }
+        }
+    }
 
     info!("Loading Johnson Bot v{VERSION}");
 
@@ -70,14 +88,28 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MEMBERS;
 
-    let pool =
-        SqlitePool::connect(&env::var("DATABASE_URL").expect("missing DATABASE_URL env")).await;
-    let pool = pool.expect("could not init sqlite pool");
+    let db_url = env::var("DATABASE_URL").expect("missing DATABASE_URL env");
+    info!("attempting to connect db to {}", db_url);
 
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("could not migrate sqlite");
+    let connect_options = match SqliteConnectOptions::from_str(&db_url) {
+        Ok(new_options) => new_options.create_if_missing(true),
+        Err(err) => {
+            error!("failed to parse database URL: {}", err);
+            return;
+        }
+    };
+
+    let pool = match SqlitePool::connect_with(connect_options).await {
+        Ok(pool) => pool,
+        Err(err) => {
+            error!("failed to connect to sqlite db: {}", err);
+            return;
+        }
+    };
+
+    if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
+        error!("failed to migrate database: {}", err);
+    }
 
     // let music_commands = vec![
     //     commands::music::play(),
