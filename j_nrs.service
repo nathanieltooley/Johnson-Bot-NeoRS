@@ -1,0 +1,8 @@
+[Unit]
+Description=Johnson Bot is back (again![again!])
+
+[Service]
+ExecStart=/usr/local/bin/johnson-nrs
+
+[Install]
+WantedBy=multi-user.target
