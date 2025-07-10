@@ -152,10 +152,19 @@ async fn main() {
 
     debug!("kwr_path: {:?}", kwr_path);
 
-    let k_reader = BufReader::new(kwr_file.expect("KWR File should exist and be readable"));
+    let mut kw_responses: Vec<KeywordResponse> = vec![];
 
-    let kw_responses: Vec<KeywordResponse> =
-        serde_json::from_reader(k_reader).expect("KWR File is not correct json");
+    match kwr_file {
+        Ok(kwr_file) => {
+            let k_reader = BufReader::new(kwr_file);
+
+            kw_responses = serde_json::from_reader(k_reader).expect("KWR File is not correct json");
+        }
+        Err(err) => {
+            error!("Error while trying to load KWR file: {}", err);
+            error!("Skipping KWRs . . .");
+        }
+    }
 
     let guilds = match std::env::var("LEVEL")
         .unwrap_or(String::from("DEBUG"))
