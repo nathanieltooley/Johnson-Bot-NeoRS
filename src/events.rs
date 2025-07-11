@@ -1,7 +1,7 @@
 use poise::serenity_prelude::{
-    Context, CreateMessage, EventHandler, GuildId, Member, Mentionable, Message, Ready,
+    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message,
 };
-use poise::{async_trait, FrameworkError};
+use poise::{FrameworkContext, FrameworkError};
 
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::Rng;
@@ -9,7 +9,7 @@ use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
-use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
+use crate::custom_types::command::{Data, Error, KeywordResponse};
 use crate::db::{self, ContextWrapper};
 
 #[derive(Debug)]
@@ -334,77 +334,89 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
     }
 }
 
-#[async_trait]
-impl EventHandler for Handler {
-    #[instrument(skip_all)]
-    async fn ready(&self, _ctx: Context, _ready: Ready) {
-        info!("Johnson is running!");
-    }
-
-    #[instrument(skip_all)]
-    async fn message(&self, ctx: Context, message: Message) {
-        if let Some(guild_id) = message.guild_id {
-            // Ignore bot messages
-            if message.author.bot {
-                return;
-            }
-
-            if slurs::contains_slur(&message.content) {
-                let _ = message.delete(&ctx).await;
-
-                if let Ok(channel) = message.channel(&ctx).await {
-                    // We can unwrap here because of the guild check above
-                    let builder = CreateMessage::new()
-                        .content("Hey! No racism is allowed in my Discord Server!");
-                    let _ = channel.id().send_message(&ctx, builder).await;
+#[instrument(skip_all)]
+pub async fn event_handler(
+    ctx: &serenity_prelude::Context,
+    event: &serenity_prelude::FullEvent,
+    _framework: FrameworkContext<'_, Data, Error>,
+    data: &Data,
+) -> Result<(), Error> {
+    match event {
+        FullEvent::Ready { data_about_bot: _ } => {
+            info!("Johnson is running!");
+            Ok(())
+        }
+        FullEvent::Message { new_message } => {
+            if let Some(guild_id) = new_message.guild_id {
+                // Ignore bot messages
+                if new_message.author.bot {
+                    return Ok(());
                 }
 
-                info!(
+                if slurs::contains_slur(&new_message.content) {
+                    let _ = new_message.delete(&ctx).await;
+
+                    if let Ok(channel) = new_message.channel(&ctx).await {
+                        // We can unwrap here because of the guild check above
+                        let builder = CreateMessage::new()
+                            .content("Hey! No racism is allowed in my Discord Server!");
+                        let _ = channel.id().send_message(&ctx, builder).await;
+                    }
+
+                    info!(
                     "User {} said a racial slur and their message has been removed. Message: {}",
-                    message.author.name, message.content
+                    new_message.author.name, new_message.content
                 );
 
-                return;
+                    return Ok(());
+                }
+
+                reward_messenger(guild_id, ctx, new_message).await;
+
+                // Handle result of dad_bot_response
+                dad_bot_response(ctx, new_message).await;
+
+                let kw_responses = &data.kwr;
+
+                keyword_response(ctx, new_message, kw_responses).await;
             }
 
-            reward_messenger(guild_id, &ctx, &message).await;
-
-            // Handle result of dad_bot_response
-            dad_bot_response(&ctx, &message).await;
-
-            let read_lock = ctx.data.read().await;
-            let kw_responses = &read_lock.get::<SerenityCtxData>().unwrap().kwr;
-
-            keyword_response(&ctx, &message, kw_responses).await;
+            Ok(())
         }
-    }
+        FullEvent::GuildMemberAddition { new_member } => {
+            let db_helper = ContextWrapper::new_classic(ctx, new_member.guild_id);
+            let server_conf = db_helper.get_server_conf(new_member.guild_id).await;
 
-    #[instrument()]
-    async fn guild_member_addition(&self, ctx: Context, new_member: Member) {
-        let db_helper = ContextWrapper::new_classic(&ctx, new_member.guild_id);
-        let server_conf = db_helper.get_server_conf(new_member.guild_id).await;
+            match server_conf {
+                Ok(conf) => {
+                    if let Some(role) = conf.welcome_role_id {
+                        if let Err(err) = new_member.add_role(ctx.http.clone(), role as u64).await {
+                            error!("{:?}", err);
+                            return Err(Box::new(err));
+                        } else {
+                            info!(
+                                "Set user role on join: {} -> {}",
+                                new_member.display_name(),
+                                role
+                            );
 
-        match server_conf {
-            Ok(conf) => {
-                if let Some(role) = conf.welcome_role_id {
-                    if let Err(err) = new_member.add_role(ctx.http, role as u64).await {
-                        error!("{:?}", err);
-                    } else {
-                        info!(
-                            "Set user role on join: {} -> {}",
-                            new_member.display_name(),
-                            role
-                        );
+                            return Ok(());
+                        }
                     }
+
+                    // Do nothing if there is no role
+                    Ok(())
                 }
+                Err(e) => match e {
+                    // do nothing if there is no row
+                    sqlx::error::Error::RowNotFound => Ok(()),
+                    _ => {
+                        error!("Couldn't get server config: {:?}", e);
+                        Err(Box::new(e))
+                    }
+                },
             }
-            Err(e) => match e {
-                // do nothing if there is no row
-                sqlx::error::Error::RowNotFound => {}
-                _ => {
-                    error!("Couldn't get server config: {:?}", e)
-                }
-            },
         }
+        _ => Ok(()),
     }
 }

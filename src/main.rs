@@ -133,6 +133,9 @@ async fn main() {
 
     let fw_opts = poise::FrameworkOptions {
         commands,
+        event_handler: |ctx, event, framework, data| {
+            Box::pin(crate::events::event_handler(ctx, event, framework, data))
+        },
         ..Default::default()
     };
 
@@ -215,7 +218,6 @@ async fn main() {
     let mut client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
         // .register_songbird()
-        .event_handler(Handler)
         .await
         .expect("Client should be built correctly");
 
