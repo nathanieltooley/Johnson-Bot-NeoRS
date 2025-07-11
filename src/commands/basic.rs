@@ -38,7 +38,7 @@ pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
     interaction
         .create_followup(
             ctx,
-            CreateInteractionResponseFollowup::new().content("Hello World"),
+            CreateInteractionResponseFollowup::new().content("Goodbye World!"),
         )
         .await?;
 
