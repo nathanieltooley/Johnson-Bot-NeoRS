@@ -23,6 +23,10 @@ pub enum ContextType<'a> {
     Slash(JContext<'a>),
     Classic(&'a Context, GuildId),
 }
+
+// Wrapper around a context type (either poise or serenity) for use with database connections.
+// Helps abstract away the different ways of getting data from both contexts, mainly the database
+// connection.
 #[derive(Debug)]
 pub struct ContextWrapper<'context> {
     ctx: ContextType<'context>,
