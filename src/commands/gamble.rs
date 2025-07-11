@@ -1,6 +1,7 @@
 use poise::serenity_prelude::{
     self, ComponentInteractionDataKind, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, Mentionable, Message, UserId,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
+    Mentionable, Message, UserId,
 };
 use serenity_prelude::futures::StreamExt;
 use std::collections::HashMap;
@@ -106,15 +107,24 @@ pub async fn rock_paper_scissors(
         return Ok(());
     }
 
-    if opponent.bot {
-        return Ok(());
-    }
-
     debug!("Getting command interaction");
     let cmd_interaction = match ctx {
         Context::Application(a) => a.interaction,
         _ => panic!("impossible"),
     };
+
+    if opponent.bot {
+        cmd_interaction
+            .create_response(
+                ctx.http(),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content("You can't play with a bot! (they dont have hands)"),
+                ),
+            )
+            .await?;
+        return Ok(());
+    }
 
     let driver = db::ContextWrapper::new_slash(ctx);
     let guild_id = ctx.guild_id().unwrap();
@@ -352,7 +362,7 @@ pub async fn rock_paper_scissors(
                 .await?;
             debug!("Attempting to give winnings to opponent");
             driver
-                .user_transaction(&author, &opponent, wager.into())
+                .user_transaction(author, &opponent, wager.into())
                 .await?;
             // You lose :((
         }
