@@ -29,6 +29,10 @@ sqlx = { version = "0.8", features = [
   "migrate",
 ] }
 dotenvy = "0.15.7"
+
+[build-dependencies]
+built = { version = "0.8", features = ["git2", "semver"] }
+
 # rspotify = {version = "0.13.1", features = ["env-file"]}
 
 # [dependencies.songbird]

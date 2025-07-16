@@ -18,7 +18,9 @@ use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
 
 #[allow(dead_code)]
 enum CommandRegistering {
@@ -75,7 +77,9 @@ async fn main() {
         }
     }
 
-    info!("Loading Johnson Bot v{VERSION}");
+    let version = built_info::GIT_VERSION.unwrap();
+
+    info!("Loading Johnson Bot v{version}");
 
     // Configuration
     let token =
