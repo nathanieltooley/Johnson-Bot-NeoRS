@@ -124,6 +124,7 @@ async fn main() {
     let commands = vec![
         commands::basic::ping(),
         commands::basic::test_interaction(),
+        commands::basic::version(),
         commands::gamble::rock_paper_scissors(),
         commands::roles::set_welcome_role(),
         commands::stats::show_stats(),

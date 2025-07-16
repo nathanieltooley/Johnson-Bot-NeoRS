@@ -1,7 +1,14 @@
-use crate::custom_types::command::{Context, Error};
+use crate::{
+    built_info,
+    custom_types::command::{Context, Error},
+};
 // use crate::events::error_handle;
-use poise::serenity_prelude::{
-    CreateInteractionResponse, CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+use poise::{
+    serenity_prelude::{
+        CreateInteractionResponse, CreateInteractionResponseFollowup,
+        CreateInteractionResponseMessage,
+    },
+    CreateReply,
 };
 use tracing::{info, instrument};
 
@@ -42,5 +49,16 @@ pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
         )
         .await?;
 
+    Ok(())
+}
+
+#[poise::command(slash_command)]
+pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.send(
+        CreateReply::default()
+            .content(built_info::GIT_VERSION.unwrap().to_owned())
+            .ephemeral(true),
+    )
+    .await?;
     Ok(())
 }
