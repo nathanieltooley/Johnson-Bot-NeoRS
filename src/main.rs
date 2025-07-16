@@ -8,8 +8,6 @@ mod db;
 mod utils;
 
 use std::env;
-use std::fs::File;
-use std::io::BufReader;
 use std::str::FromStr;
 
 use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
@@ -19,7 +17,6 @@ use sqlx::SqlitePool;
 use tracing::{debug, error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
-use events::Handler;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -149,25 +146,10 @@ async fn main() {
     // };
 
     // KWR Config File
-    let working_dir = env::current_dir().unwrap();
-    let kwr_path = working_dir.join("cfg/kwr.json");
-    let kwr_file = File::open(&kwr_path);
 
-    debug!("kwr_path: {:?}", kwr_path);
-
-    let mut kw_responses: Vec<KeywordResponse> = vec![];
-
-    match kwr_file {
-        Ok(kwr_file) => {
-            let k_reader = BufReader::new(kwr_file);
-
-            kw_responses = serde_json::from_reader(k_reader).expect("KWR File is not correct json");
-        }
-        Err(err) => {
-            error!("Error while trying to load KWR file: {}", err);
-            error!("Skipping KWRs . . .");
-        }
-    }
+    let kwr_str = include_str!("../cfg/kwr.json");
+    let kw_responses: Vec<KeywordResponse> =
+        serde_json::from_str(kwr_str).expect("embedded kwr.json str should be valid json");
 
     let guilds = match std::env::var("LEVEL")
         .unwrap_or(String::from("DEBUG"))
