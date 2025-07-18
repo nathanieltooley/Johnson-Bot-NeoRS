@@ -2,12 +2,12 @@ use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, Timestamp};
 use poise::CreateReply;
 
 use crate::custom_types::command::{Context, Error};
-use crate::db;
+use crate::db::Database;
 use crate::events::error_handle;
 
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn show_stats(ctx: Context<'_>) -> Result<(), Error> {
-    let db_handler = db::ContextWrapper::new_slash(ctx);
+    let db_handler = Database::new(ctx);
     let user_info = db_handler.get_user(ctx.author()).await?;
 
     let stat_fields = vec![

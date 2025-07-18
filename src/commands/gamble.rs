@@ -1,7 +1,6 @@
 use poise::serenity_prelude::{
     self, ComponentInteractionDataKind, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
-    Mentionable, Message, UserId,
+    CreateInteractionResponseMessage, CreateMessage, Mentionable, Message, UserId,
 };
 use serenity_prelude::futures::StreamExt;
 use std::collections::HashMap;
@@ -10,7 +9,7 @@ use std::time::Duration;
 use tracing::{debug, info, instrument};
 
 use crate::custom_types::command::{Context, Error};
-use crate::db;
+use crate::db::Database;
 use crate::events::error_handle;
 use crate::utils::message::interaction::wait_for_user_interaction;
 use crate::utils::message::simple_channel_message;
@@ -126,7 +125,7 @@ pub async fn rock_paper_scissors(
         return Ok(());
     }
 
-    let driver = db::ContextWrapper::new_slash(ctx);
+    let driver = Database::new(ctx);
     let guild_id = ctx.guild_id().unwrap();
     let author = ctx.author();
     let author_nick = author

@@ -10,7 +10,7 @@ use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
 use crate::custom_types::command::{Data, Error, KeywordResponse};
-use crate::db::{self, ContextWrapper};
+use crate::db::{self, Database};
 
 #[derive(Debug)]
 pub struct Handler;
@@ -81,7 +81,7 @@ fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'
 
 #[instrument(skip_all, fields(guild_id, message=message.content))]
 async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
-    let db_helper = ContextWrapper::new_classic(ctx, guild_id);
+    let db_helper = Database::new((ctx, guild_id));
 
     // Try to get the nickname of the author
     // otherwise default to their username
@@ -384,7 +384,7 @@ pub async fn event_handler(
             Ok(())
         }
         FullEvent::GuildMemberAddition { new_member } => {
-            let db_helper = ContextWrapper::new_classic(ctx, new_member.guild_id);
+            let db_helper = Database::new((ctx, new_member.guild_id));
             let server_conf = db_helper.get_server_conf(new_member.guild_id).await;
 
             match server_conf {

@@ -6,6 +6,7 @@ use crate::utils::math::round_to_100;
 
 use std::f64::consts::E;
 
+use poise::serenity_prelude::Guild;
 use poise::serenity_prelude::RoleId;
 use poise::serenity_prelude::User;
 use poise::serenity_prelude::{Context, GuildId};
@@ -28,8 +29,26 @@ pub enum ContextType<'a> {
 // Helps abstract away the different ways of getting data from both contexts, mainly the database
 // connection.
 #[derive(Debug)]
-pub struct ContextWrapper<'context> {
+struct ContextWrapper<'context> {
     ctx: ContextType<'context>,
+}
+
+impl<'context> From<JContext<'context>> for ContextType<'context> {
+    fn from(value: JContext<'context>) -> Self {
+        Self::Slash(value)
+    }
+}
+
+impl<'context> From<(&'context Context, GuildId)> for ContextType<'context> {
+    fn from(value: (&'context Context, GuildId)) -> Self {
+        Self::Classic(value.0, value.1)
+    }
+}
+
+/// Represents an abstact connection to a database. Right now, this is hard coded to be sqlx::sqlite,
+/// but maybe this will change?
+pub struct Database<'context> {
+    ctx: ContextWrapper<'context>,
 }
 
 // 'context is the lifetime of the context passed in
@@ -56,22 +75,23 @@ impl<'context> ContextWrapper<'context> {
         }
     }
 
-    pub fn new_classic(ctx: &'context Context, guild_id: GuildId) -> Self {
-        ContextWrapper {
-            ctx: ContextType::Classic(ctx, guild_id),
-        }
+    fn new(ctx: impl Into<ContextType<'context>>) -> ContextWrapper<'context> {
+        let ctx: ContextType = ctx.into();
+        ContextWrapper { ctx }
     }
+}
 
-    pub fn new_slash(ctx: JContext<'context>) -> Self {
-        ContextWrapper {
-            ctx: ContextType::Slash(ctx),
+impl<'context> Database<'context> {
+    pub fn new(ctx: impl Into<ContextType<'context>>) -> Database<'context> {
+        Database {
+            ctx: ContextWrapper::new(ctx),
         }
     }
 
     // Creates a user, ignores if user already exists
     #[instrument(skip(self))]
     pub async fn create_user(&self, user: &User) -> sqlx::Result<DbUser> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let user_id: u64 = user.id.into();
         let user_id = user_id as i64;
 
@@ -93,7 +113,7 @@ impl<'context> ContextWrapper<'context> {
     // Gets a user from db, creates one if they don't exist
     #[instrument(skip(self))]
     pub async fn get_user(&self, user: &User) -> sqlx::Result<DbUser> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let user_id = user_to_id(user);
 
         let db_user = sqlx::query_as!(DbUser, "SELECT * FROM users WHERE id = $1", user_id)
@@ -114,7 +134,7 @@ impl<'context> ContextWrapper<'context> {
         user: &User,
         money: i64,
     ) -> sqlx::Result<SqliteQueryResult> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let user_id = user_to_id(user);
 
         // increment the money amount by "money" param
@@ -128,7 +148,7 @@ impl<'context> ContextWrapper<'context> {
     }
 
     pub async fn give_user_exp(&self, user: &User, exp: i64) -> sqlx::Result<i64> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let user_id = user_to_id(user);
 
         // increment the money amount by "money" param
@@ -149,7 +169,7 @@ impl<'context> ContextWrapper<'context> {
         to_user: &User,
         money: i64,
     ) -> sqlx::Result<()> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let mut trans = pool.begin().await?;
 
         let from_user_id = user_to_id(from_user);
@@ -175,7 +195,7 @@ impl<'context> ContextWrapper<'context> {
     }
 
     pub async fn get_server_conf(&self, guild: GuildId) -> sqlx::Result<ServerConfig> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let guild_id = guild_to_id(guild);
 
         let conf = sqlx::query_as!(
@@ -190,7 +210,7 @@ impl<'context> ContextWrapper<'context> {
     }
 
     pub async fn save_welcome_role(&self, guild: GuildId, role: RoleId) -> sqlx::Result<()> {
-        let pool = self.get_conn().await;
+        let pool = self.ctx.get_conn().await;
         let role_id: u64 = role.into();
         let role_id = role_id as i64;
         let guild_id = guild_to_id(guild);
@@ -212,6 +232,7 @@ impl<'context> ContextWrapper<'context> {
         Ok(())
     }
 }
+
 pub fn level_to_exp(l: i64) -> i64 {
     // I use two "as" "hacks" since Into and TryInto didn't want to work
     // I feel like i64 should be able to go into f64 (at least through TryInto) but whatever

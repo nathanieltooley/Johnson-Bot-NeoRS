@@ -1,12 +1,12 @@
 use poise::serenity_prelude::Role;
 
 use crate::custom_types::command::{Context, Error};
-use crate::db::ContextWrapper;
+use crate::db::Database;
 use crate::events::error_handle;
 
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn set_welcome_role(ctx: Context<'_>, welcome_role: Role) -> Result<(), Error> {
-    let client = ContextWrapper::new_slash(ctx);
+    let client = Database::new(ctx);
     let guild_id = ctx.guild_id();
 
     if let Some(guild_id) = guild_id {
