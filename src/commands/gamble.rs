@@ -41,6 +41,7 @@ enum RpsResult {
     Tie,
 }
 
+#[allow(dead_code)]
 enum SlotOptions {
     SkullNBones(u32),
     Diamonds(u32),
@@ -372,7 +373,7 @@ pub async fn rock_paper_scissors(
 
 #[instrument(skip_all)]
 #[poise::command(slash_command, on_error = "error_handle")]
-pub async fn slots(ctx: Context<'_>, bet: u64) -> Result<(), Error> {
+pub async fn slots(_ctx: Context<'_>, _bet: u64) -> Result<(), Error> {
     // Create a handful of different options (probably emojis)
 
     // Randomly select an option 3 times
