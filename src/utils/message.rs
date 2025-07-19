@@ -55,3 +55,16 @@ pub mod interaction {
         None
     }
 }
+
+pub mod embed {
+    use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, Timestamp};
+
+    static JBOT_PFP_URL: &str = "https://cdn.discordapp.com/attachments/1276784436494733384/1290877955656122419/Worship.png?ex=687b10c7&is=6879bf47&hm=be23b2e97af43997c6b6001992f096b5220f60ff5b9ae8ddf3be1c6b54a1685f&";
+
+    pub fn base_embed() -> CreateEmbed {
+        CreateEmbed::new()
+            .author(CreateEmbedAuthor::new("Johnson Bot").icon_url(JBOT_PFP_URL))
+            .footer(CreateEmbedFooter::new("written by beanbubger"))
+            .timestamp(Timestamp::now())
+    }
+}

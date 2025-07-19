@@ -1,11 +1,9 @@
-use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, Timestamp};
 use poise::CreateReply;
 
 use crate::custom_types::command::{Context, Error};
 use crate::db::Database;
 use crate::events::error_handle;
-
-static JBOT_PFP_URL: &str = "https://cdn.discordapp.com/attachments/1276784436494733384/1290877955656122419/Worship.png?ex=687b10c7&is=6879bf47&hm=be23b2e97af43997c6b6001992f096b5220f60ff5b9ae8ddf3be1c6b54a1685f&";
+use crate::utils::message::embed::base_embed;
 
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn show_stats(
@@ -20,12 +18,9 @@ pub async fn show_stats(
         ("V-Bucks", format!("*{}*", user_info.vbucks), false),
     ];
 
-    let stats_embed = CreateEmbed::new()
+    let stats_embed = base_embed()
         .title(format!("{}'s Stats", ctx.author().name))
-        .author(CreateEmbedAuthor::new("Johnson Bot").icon_url(JBOT_PFP_URL))
-        .fields(stat_fields)
-        .footer(CreateEmbedFooter::new("written by beanbubger"))
-        .timestamp(Timestamp::now());
+        .fields(stat_fields);
 
     ctx.send(
         CreateReply::default()
