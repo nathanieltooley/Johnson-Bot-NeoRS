@@ -6,7 +6,6 @@ use crate::utils::math::round_to_100;
 
 use std::f64::consts::E;
 
-use poise::serenity_prelude::Guild;
 use poise::serenity_prelude::RoleId;
 use poise::serenity_prelude::User;
 use poise::serenity_prelude::{Context, GuildId};
@@ -22,7 +21,7 @@ const EXPO_MULTIPLIER: f64 = 0.0415;
 #[derive(Debug, Clone)]
 pub enum ContextType<'a> {
     Slash(JContext<'a>),
-    Classic(&'a Context, GuildId),
+    Classic(&'a Context),
 }
 
 // Wrapper around a context type (either poise or serenity) for use with database connections.
@@ -39,9 +38,9 @@ impl<'context> From<JContext<'context>> for ContextType<'context> {
     }
 }
 
-impl<'context> From<(&'context Context, GuildId)> for ContextType<'context> {
-    fn from(value: (&'context Context, GuildId)) -> Self {
-        Self::Classic(value.0, value.1)
+impl<'context> From<&'context Context> for ContextType<'context> {
+    fn from(value: &'context Context) -> Self {
+        Self::Classic(value)
     }
 }
 
@@ -55,7 +54,7 @@ pub struct Database<'context> {
 impl<'context> ContextWrapper<'context> {
     async fn get_conn(&self) -> SqlitePool {
         match self.ctx {
-            ContextType::Classic(ctx, _) => {
+            ContextType::Classic(ctx) => {
                 let read = ctx.data.read().await;
                 read.get::<SerenityCtxData>()
                     .expect("Johnson should have a SerenityCtxData set in context")
@@ -63,15 +62,6 @@ impl<'context> ContextWrapper<'context> {
                     .clone()
             }
             ContextType::Slash(ctx) => ctx.data().db_conn.clone(),
-        }
-    }
-
-    fn get_guild_id(&self) -> GuildId {
-        match self.ctx {
-            ContextType::Slash(ctx) => ctx
-                .guild_id()
-                .expect("This method should never be called inside of DMs"),
-            ContextType::Classic(_, gid) => gid,
         }
     }
 
