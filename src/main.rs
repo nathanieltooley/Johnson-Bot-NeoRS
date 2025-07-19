@@ -90,7 +90,7 @@ async fn main() {
         | GatewayIntents::GUILD_MEMBERS;
 
     let db_url = env::var("DATABASE_URL").expect("missing DATABASE_URL env");
-    info!("attempting to connect db to {}", db_url);
+    info!("Attempting to connect db to {}", db_url);
 
     let connect_options = match SqliteConnectOptions::from_str(&db_url) {
         Ok(new_options) => new_options.create_if_missing(true),
@@ -107,6 +107,8 @@ async fn main() {
             return;
         }
     };
+
+    info!("Successfully connected to db");
 
     if let Err(err) = sqlx::migrate!("./migrations").run(&pool).await {
         error!("failed to migrate database: {}", err);
