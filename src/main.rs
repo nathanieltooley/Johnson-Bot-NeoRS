@@ -14,7 +14,7 @@ use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use poise::Command;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::SqlitePool;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 
