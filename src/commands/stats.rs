@@ -8,7 +8,7 @@ use crate::utils::message::embed::base_embed;
 #[poise::command(slash_command, on_error = "error_handle")]
 pub async fn show_stats(
     ctx: Context<'_>,
-    #[description = "let the whole world know?"] annoy_others: bool,
+    #[description = "Let the whole world know?"] annoy_others: bool,
 ) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
     let user_info = db_handler.get_user(ctx.author()).await?;

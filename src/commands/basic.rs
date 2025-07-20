@@ -1,6 +1,7 @@
 use crate::{
     built_info,
     custom_types::command::{Context, Error},
+    utils::message::embed::base_embed,
 };
 // use crate::events::error_handle;
 use poise::{
@@ -53,11 +54,15 @@ pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command)]
-pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn version(
+    ctx: Context<'_>,
+    #[description = "Tell the whole world?"] annoy_others: bool,
+) -> Result<(), Error> {
+    let version_embed = base_embed().title(built_info::GIT_VERSION.unwrap().to_owned());
     ctx.send(
         CreateReply::default()
-            .content(built_info::GIT_VERSION.unwrap().to_owned())
-            .ephemeral(true),
+            .embed(version_embed)
+            .ephemeral(annoy_others),
     )
     .await?;
     Ok(())
