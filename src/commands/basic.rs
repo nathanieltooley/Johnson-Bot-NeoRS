@@ -67,3 +67,9 @@ pub async fn version(
     .await?;
     Ok(())
 }
+
+#[poise::command(slash_command)]
+pub async fn smile(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.send(CreateReply::default().reply(true).content("https://cdn.discordapp.com/attachments/322818382506229768/1409415101450293278/Johnson_Smile.png?ex=68ad4b99&is=68abfa19&hm=9add5e51f18ee34b825705d8c142e22380dab4f42c98619d420be05b3b4c03cc")).await?;
+    Ok(())
+}
