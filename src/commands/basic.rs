@@ -62,7 +62,7 @@ pub async fn version(
     ctx.send(
         CreateReply::default()
             .embed(version_embed)
-            .ephemeral(annoy_others),
+            .ephemeral(!annoy_others),
     )
     .await?;
     Ok(())
