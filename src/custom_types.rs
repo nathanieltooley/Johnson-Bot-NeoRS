@@ -1,6 +1,7 @@
 pub mod command {
     use crate::serenity::prelude::TypeMapKey;
-    use poise::serenity_prelude::Role;
+    use futures::lock::Mutex;
+    use poise::serenity_prelude::{OnlineStatus, Role, VoiceState};
     use reqwest::Client as HttpClient;
     use serde::Deserialize;
     use sqlx::SqlitePool;
@@ -36,6 +37,22 @@ pub mod command {
         },
     }
 
+    pub struct FriendInfo {
+        pub status: OnlineStatus,
+        pub voice_status: Option<VoiceState>,
+    }
+
+    impl FriendInfo {
+        pub fn online(&self) -> bool {
+            self.status == OnlineStatus::Online
+                || self
+                    .voice_status
+                    .as_ref()
+                    .map(|stat| stat.channel_id.is_some())
+                    .unwrap_or(false)
+        }
+    }
+
     #[derive(Debug)]
     // Custom data to send between commands
     pub struct Data {
@@ -48,6 +65,7 @@ pub mod command {
         pub db_conn: SqlitePool,
         pub kwr: Vec<KeywordResponse>,
         pub welcome_role: Option<Role>,
+        pub friend_info: FriendInfo,
     }
 
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)

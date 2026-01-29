@@ -10,13 +10,16 @@ mod utils;
 use std::env;
 use std::str::FromStr;
 
-use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
+use futures::lock::Mutex;
+use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId, VoiceState};
 use poise::Command;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::SqlitePool;
 use tracing::{error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
+
+use crate::custom_types::command::FriendInfo;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
@@ -87,7 +90,8 @@ async fn main() {
     let intents = serenity::GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT
-        | GatewayIntents::GUILD_MEMBERS;
+        | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::GUILD_PRESENCES;
 
     let db_url = env::var("DATABASE_URL").expect("missing DATABASE_URL env");
     info!("Attempting to connect db to {}", db_url);
@@ -183,6 +187,10 @@ async fn main() {
         db_conn: pool.clone(),
         kwr: kw_responses.clone(),
         welcome_role: None,
+        friend_info: FriendInfo {
+            status: serenity::OnlineStatus::Offline,
+            voice_status: None,
+        },
     };
 
     // Build framework

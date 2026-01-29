@@ -1,21 +1,27 @@
+use std::env;
+use std::sync::Arc;
+use std::time::Duration;
+
 use poise::serenity_prelude::{
-    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message,
+    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, OnlineStatus, UserId,
 };
 use poise::{FrameworkContext, FrameworkError};
 
-use rand::distributions::{Distribution, WeightedIndex};
 use rand::Rng;
+use rand::distributions::{Distribution, WeightedIndex};
 use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
-use crate::custom_types::command::{Data, Error, KeywordResponse};
+use crate::custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
 use crate::db::{self, Database};
 
 const MONEY_MIN: i64 = 5;
 const MONEY_MAX: i64 = 20;
 
 const EXP_PER_MESSAGE: i64 = 100;
+
+const MESSAGE_TIME: Duration = Duration::from_mins(30);
 
 pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
@@ -74,6 +80,21 @@ fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'
     let weighted_dist = WeightedIndex::new(weights).unwrap();
 
     &responses[weighted_dist.sample(&mut rand::thread_rng())]
+}
+
+fn get_friend_id() -> Option<UserId> {
+    let id = env::var("FRIEND_ID");
+    match id {
+        Ok(str_id) => match str_id.parse::<u64>() {
+            Ok(id) => {
+                return Some(id.into());
+            }
+            Err(_) => error!("Invalid FRIEND_ID"),
+        },
+        Err(_) => error!("Missing FRIEND_ID"),
+    }
+
+    None
 }
 
 #[instrument(skip_all, fields(guild_id, message=message.content))]
@@ -254,7 +275,10 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
                             );
                         }
                         Err(e) => {
-                            error!("Johnson Bot could not reply to multi response keyword {}. Error {:?}", kw, e);
+                            error!(
+                                "Johnson Bot could not reply to multi response keyword {}. Error {:?}",
+                                kw, e
+                            );
                         }
                     }
                 }
@@ -278,7 +302,10 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
                             );
                         }
                         Err(e) => {
-                            error!("Johnson Bot could not reply to weighted response keyword {}. Error: {:?}", kw, e);
+                            error!(
+                                "Johnson Bot could not reply to weighted response keyword {}. Error: {:?}",
+                                kw, e
+                            );
                         }
                     }
                 }
@@ -298,7 +325,10 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
                             );
                         }
                         Err(e) => {
-                            error!("Johnson Bot could not reply to multi response keywords, {:?}. Error: {:?}", kws, e);
+                            error!(
+                                "Johnson Bot could not reply to multi response keywords, {:?}. Error: {:?}",
+                                kws, e
+                            );
                         }
                     }
                 }
@@ -322,7 +352,10 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
                             );
                         }
                         Err(e) => {
-                            error!("Johnson Bot could not reply to weighted response keywords, {:?}. Error: {:?}", kws, e);
+                            error!(
+                                "Johnson Bot could not reply to weighted response keywords, {:?}. Error: {:?}",
+                                kws, e
+                            );
                         }
                     }
                 }
@@ -339,8 +372,54 @@ pub async fn event_handler(
     data: &Data,
 ) -> Result<(), Error> {
     match event {
-        FullEvent::Ready { data_about_bot: _ } => {
+        FullEvent::Ready { data_about_bot } => {
             info!("Johnson is running!");
+            let http_clone = Arc::clone(&ctx.http);
+            let data_clone = Arc::clone(&ctx.data);
+
+            match get_friend_id() {
+                Some(friend_id) => {
+                    tokio::spawn(async move {
+                        match http_clone.get_user(friend_id).await {
+                            Ok(friend) => {
+                                let friend_name =
+                                    env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
+
+                                loop {
+                                    let data_map = data_clone.read().await;
+                                    let friend_info = &data_map
+                                        .get::<SerenityCtxData>()
+                                        .expect("Invalid ctx data")
+                                        .friend_info;
+
+                                    if friend_info.online() {
+                                        if let Err(err) = friend
+                                            .direct_message(
+                                                &http_clone,
+                                                CreateMessage::new().content(format!(
+                                                    "Hey {friend_name}! Uncross your legs and sit up straight!"
+                                                )),
+                                            )
+                                            .await
+                                        {
+                                            error!("Failed to send friend message: {err}");
+                                        }
+
+                                        tokio::time::sleep(MESSAGE_TIME).await;
+                                    } else {
+                                        tokio::time::sleep(Duration::from_secs(10)).await;
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                error!("Failed to get friend user: {err}")
+                            }
+                        }
+                    });
+                }
+                None => error!("No FRIEND_ID, not sending messages"),
+            }
+
             Ok(())
         }
         FullEvent::Message { new_message } => {
@@ -361,9 +440,9 @@ pub async fn event_handler(
                     }
 
                     info!(
-                    "User {} said a racial slur and their message has been removed. Message: {}",
-                    new_message.author.name, new_message.content
-                );
+                        "User {} said a racial slur and their message has been removed. Message: {}",
+                        new_message.author.name, new_message.content
+                    );
 
                     return Ok(());
                 }
@@ -413,6 +492,33 @@ pub async fn event_handler(
                     }
                 },
             }
+        }
+        FullEvent::PresenceUpdate { new_data } => {
+            debug!("{new_data:?}");
+            if let Some(friend_id) = get_friend_id()
+                && friend_id == new_data.user.id
+            {
+                let mut data_map = ctx.data.write().await;
+                let data = data_map.get_mut::<SerenityCtxData>().unwrap();
+                data.friend_info.status = new_data.status;
+            }
+
+            Ok(())
+        }
+        FullEvent::VoiceStateUpdate { old: _, new } => {
+            // Considered "Online" if they join a voice channel
+            if let Some(ref member) = new.member {
+                let user = &member.user;
+                if let Some(friend_id) = get_friend_id()
+                    && friend_id == user.id
+                {
+                    let mut data_map = ctx.data.write().await;
+                    let data = data_map.get_mut::<SerenityCtxData>().unwrap();
+                    data.friend_info.voice_status = Some(new.to_owned());
+                }
+            }
+
+            Ok(())
         }
         _ => Ok(()),
     }
