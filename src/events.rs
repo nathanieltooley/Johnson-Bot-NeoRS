@@ -175,7 +175,7 @@ async fn dad_bot_response(ctx: &Context, message: &Message) {
 
     // To Future Me: Just plug this RegEx in on some website if you forget what it does
     // shouldn't be too hard to remember
-    let re = Regex::new(r"(^|\b)(?P<im>[iI]['‘’]?m)(?P<message>.*[.,!?])?")
+    let re = Regex::new(r"(^|\b)(?P<im>[iI]['‘’]?m )(?P<message>.*[.,!?])?")
         .expect("Invalid regex pattern");
 
     let caps = re.captures(&message_content);
