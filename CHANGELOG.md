@@ -2,6 +2,62 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-01-29
+
+### Features
+
+- *(kwr)* Allow johnson to ignore missing kwr file
+- Kwr file is now embedded into binary
+- *(command)* Add stat view command
+- *(commands)* Version command
+- *(command)* Improve stats command
+- *(command)* Make version command send embed
+- *(command)* Show stats command can now show other people's stats
+- *(command)* Add smile
+- *(kwr)* Add kw smile
+- *(events)* Added friend messaging
+
+### Bug Fixes
+
+- Properly respond to RPS when user wants to fight bot
+- Inverted bool for version command
+- *(kwr)* Dad bot should stop replying to words that start with 'im'
+
+### Other
+
+- Test some more followup features
+- Add better build version info
+- Rerun script if new commit is added to git
+
+### Refactor
+
+- *(db)* Remove mongodb code
+- Move back to folder modules
+- Move event handling to poise function rather than serenity trait
+- Remove music mod
+- Abstract away discord context handling for db
+- Remove guild_id from database
+- Move some embed code into base embed
+
+### Documentation
+
+- *(cliff)* Add cliff.toml
+- Remove changelog for now
+- Changelog is back
+- More info on ContextWrapper type
+
+### Miscellaneous Tasks
+
+- *(docker)* Remove all docker files
+- *(systemd)* Add systemd service file
+- *(systemd)* Add shell script to automate pushing to remote server
+- *(docker)* Get rid of docker action file
+- Remove file
+- *(systemd)* Switch to root systemctl instead of user systemctl
+- Clean up logs slightly
+- Fix some clippy warnings
+- Clippy
+
 ## [0.2.0] - 2025-07-09
 
 ### Features
