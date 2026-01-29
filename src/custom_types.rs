@@ -2,6 +2,7 @@ pub mod command {
     use crate::serenity::prelude::TypeMapKey;
     use futures::lock::Mutex;
     use poise::serenity_prelude::{OnlineStatus, Role, VoiceState};
+    use problemo::Problem;
     use reqwest::Client as HttpClient;
     use serde::Deserialize;
     use sqlx::SqlitePool;
@@ -69,7 +70,7 @@ pub mod command {
     }
 
     // Custom error type alias that is an Error that implements Send and Sync (for async stuff)
-    pub type Error = Box<dyn std::error::Error + Send + Sync>;
+    pub type Error = Problem;
     // Poise context constructed with custom Data and Error types
     pub type Context<'a> = poise::Context<'a, Data, Error>;
 

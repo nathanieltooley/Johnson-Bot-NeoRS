@@ -10,11 +10,11 @@ mod utils;
 use std::env;
 use std::str::FromStr;
 
-use futures::lock::Mutex;
-use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId, VoiceState};
 use poise::Command;
-use sqlx::sqlite::SqliteConnectOptions;
+use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId, VoiceState};
+use problemo::*;
 use sqlx::SqlitePool;
+use sqlx::sqlite::SqliteConnectOptions;
 use tracing::{error, info};
 
 use custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
@@ -39,7 +39,7 @@ impl CommandRegistering {
         db_conn: SqlitePool,
         kwr: Vec<KeywordResponse>,
         http: reqwest::Client,
-    ) -> Result<Data, Box<dyn std::error::Error + Sync + Send>> {
+    ) -> Result<Data, Problem> {
         match self {
             // Register the commands globally
             CommandRegistering::Global => {
@@ -132,6 +132,7 @@ async fn main() {
         commands::basic::test_interaction(),
         commands::basic::version(),
         commands::basic::smile(),
+        commands::basic::test_problem(),
         commands::gamble::rock_paper_scissors(),
         commands::roles::set_welcome_role(),
         commands::stats::show_stats(),
@@ -209,6 +210,7 @@ async fn main() {
                         http_client,
                     )
                     .await
+                    .map_err(|err| err.into_problem())
             })
         })
         .build();

@@ -992,6 +992,7 @@ dependencies = [
  "futures-util",
  "once_cell",
  "poise",
+ "problemo",
  "rand",
  "regex",
  "reqwest",
@@ -1440,6 +1441,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
  "zerocopy",
+]
+
+[[package]]
+name = "problemo"
+version = "0.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b98f7840e2e4f5c3f513252dac3a0adce411ff250424af44879fc503ae4e9b78"
+dependencies = [
+ "thin-vec",
 ]
 
 [[package]]
@@ -2256,6 +2266,12 @@ dependencies = [
  "rustix",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "thin-vec"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "144f754d318415ac792f9d69fc87abbbfc043ce2ef041c60f16ad828f638717d"
 
 [[package]]
 name = "thiserror"

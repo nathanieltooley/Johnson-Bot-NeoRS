@@ -29,6 +29,7 @@ sqlx = { version = "0.8", features = [
   "migrate",
 ] }
 dotenvy = "0.15.7"
+problemo = "0.0.7"
 
 [build-dependencies]
 built = { version = "0.8", features = ["git2", "semver"] }

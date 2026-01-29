@@ -1,19 +1,23 @@
+#![allow(clippy::derived_hash_with_manual_eq)]
+
 use std::env;
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
 use poise::serenity_prelude::{
-    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, OnlineStatus, UserId,
+    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
 };
 use poise::{FrameworkContext, FrameworkError};
 
+use problemo::*;
 use rand::Rng;
 use rand::distributions::{Distribution, WeightedIndex};
 use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
-use crate::custom_types::command::{Data, Error, KeywordResponse, PartialData, SerenityCtxData};
+use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use crate::db::{self, Database};
 
 const MONEY_MIN: i64 = 5;
@@ -26,18 +30,35 @@ const MESSAGE_TIME: Duration = Duration::from_mins(30);
 pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
+            let mut error_buf: Vec<u8> = Vec::new();
+            writeln!(
+                &mut error_buf,
+                "An error occurred during the execution of a command: "
+            )
+            .expect("Failed to write to error buffer");
+
+            for cause in &error {
+                writeln!(&mut error_buf, "  - because: {}", cause.error)
+                    .expect("Failed to write to error buffer");
+                for attachment in &cause.attachments {
+                    writeln!(&mut error_buf, "      - {:?}", attachment)
+                        .expect("Failed to write to error buffer");
+                }
+            }
+
             error!(
-                "An error occurred during the execution of a command, {:?}. Error: {}",
-                ctx.command(),
-                error
+                "An error occurred during the execution of a command, {}. Error: {}",
+                ctx.command().name,
+                String::from_utf8(error_buf).expect("Error message is not utf8")
             );
 
+            // TODO: Make this look nicer on Discord
             ctx.say(format!("An error has occurred: {error}"))
                 .await
                 .unwrap();
         }
         _ => {
-            error!("Oh dear, we have an error {:?}", error)
+            error!("Oh dear, we have an error {}", error)
         }
     }
 }
@@ -364,6 +385,8 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
     }
 }
 
+gloss_error!(NewGuildMemberError, "Error processing new guild member");
+
 #[instrument(skip_all)]
 pub async fn event_handler(
     ctx: &serenity_prelude::Context,
@@ -372,7 +395,7 @@ pub async fn event_handler(
     data: &Data,
 ) -> Result<(), Error> {
     match event {
-        FullEvent::Ready { data_about_bot } => {
+        FullEvent::Ready { data_about_bot: _ } => {
             info!("Johnson is running!");
             let http_clone = Arc::clone(&ctx.http);
             let data_clone = Arc::clone(&ctx.data);
@@ -466,18 +489,16 @@ pub async fn event_handler(
             match server_conf {
                 Ok(conf) => {
                     if let Some(role) = conf.welcome_role_id {
-                        if let Err(err) = new_member.add_role(ctx.http.clone(), role as u64).await {
-                            error!("{:?}", err);
-                            return Err(Box::new(err));
-                        } else {
-                            info!(
-                                "Set user role on join: {} -> {}",
-                                new_member.display_name(),
-                                role
-                            );
+                        new_member
+                            .add_role(ctx.http.clone(), role as u64)
+                            .await
+                            .via(NewGuildMemberError::new("failed to set new member's role"))?;
 
-                            return Ok(());
-                        }
+                        info!(
+                            "Set user role on join: {} -> {}",
+                            new_member.display_name(),
+                            role
+                        );
                     }
 
                     // Do nothing if there is no role
@@ -486,10 +507,7 @@ pub async fn event_handler(
                 Err(e) => match e {
                     // do nothing if there is no row
                     sqlx::error::Error::RowNotFound => Ok(()),
-                    _ => {
-                        error!("Couldn't get server config: {:?}", e);
-                        Err(Box::new(e))
-                    }
+                    _ => Err(NewGuildMemberError::as_problem("Couldn't get server config").via(e)),
                 },
             }
         }
@@ -499,7 +517,9 @@ pub async fn event_handler(
                 && friend_id == new_data.user.id
             {
                 let mut data_map = ctx.data.write().await;
-                let data = data_map.get_mut::<SerenityCtxData>().unwrap();
+                let data = data_map
+                    .get_mut::<SerenityCtxData>()
+                    .expect("Invalid ctx data");
                 data.friend_info.status = new_data.status;
             }
 
@@ -513,7 +533,9 @@ pub async fn event_handler(
                     && friend_id == user.id
                 {
                     let mut data_map = ctx.data.write().await;
-                    let data = data_map.get_mut::<SerenityCtxData>().unwrap();
+                    let data = data_map
+                        .get_mut::<SerenityCtxData>()
+                        .expect("Invalid ctx data");
                     data.friend_info.voice_status = Some(new.to_owned());
                 }
             }
