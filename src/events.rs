@@ -1,12 +1,13 @@
 #![allow(clippy::derived_hash_with_manual_eq)]
 
 use std::env;
+use std::fmt::Display;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
 use poise::serenity_prelude::{
-    self, Context, CreateEmbed, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
+    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
 };
 use poise::{CreateReply, FrameworkContext, FrameworkError};
 
@@ -27,6 +28,58 @@ const MONEY_MAX: i64 = 20;
 const EXP_PER_MESSAGE: i64 = 100;
 
 const MESSAGE_TIME: Duration = Duration::from_mins(30);
+
+gloss_error!(NewGuildMemberError, "Error processing new guild member");
+static_gloss_error!(RewardError, "Error while trying to give user rewards");
+static_gloss_error!(DadBotError, "Error while trying to make funny dad joke");
+
+#[derive(Debug)]
+struct KeywordError {
+    keyword: KeywordResponse,
+}
+
+impl std::error::Error for KeywordError {}
+impl Display for KeywordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.keyword {
+            KeywordResponse::SingleKW { kw, response: _ } => {
+                write!(f, "Error while trying to respond to keyword: {kw}")
+            }
+            KeywordResponse::MultiKW { kws, response: _ } => {
+                write!(
+                    f,
+                    "Error while trying to respond to multiple keywords: {kws:?}"
+                )
+            }
+            KeywordResponse::MultiResponse { kw, responses: _ } => {
+                write!(f, "Error while trying to respond to keyword: {kw}")
+            }
+            KeywordResponse::MultiKWResponse { kws, responses: _ } => {
+                write!(
+                    f,
+                    "Error while trying to respond to multiple keywords: {kws:?}"
+                )
+            }
+            KeywordResponse::WeightedResponses {
+                kw,
+                responses: _,
+                weights: _,
+            } => {
+                write!(f, "Error while trying to respond to weighted keyword: {kw}")
+            }
+            KeywordResponse::MultiKWWeightedResponses {
+                kws,
+                responses: _,
+                weights: _,
+            } => {
+                write!(
+                    f,
+                    "Error while trying to respond to multiple weighted keywords: {kws:?}"
+                )
+            }
+        }
+    }
+}
 
 pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
@@ -59,7 +112,6 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
             let error_embed =
                 message::embed::base_embed().description(format!("```{error_string}```"));
 
-            // TODO: Make this look nicer on Discord
             if let Err(err) = ctx
                 .send(
                     CreateReply::default()
@@ -71,6 +123,7 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
                 error!("Failed to send error message! Fuck! {err}");
             }
         }
+        // TODO: Add handle for event_handler errors
         _ => {
             error!("Oh dear, we have an error {}", error)
         }
@@ -133,79 +186,54 @@ fn get_friend_id() -> Option<UserId> {
 }
 
 #[instrument(skip_all, fields(guild_id, message=message.content))]
-async fn reward_messenger(guild_id: GuildId, ctx: &Context, message: &Message) {
+async fn reward_messenger(_: GuildId, ctx: &Context, message: &Message) -> Result<(), Problem> {
     let db_helper = Database::new(ctx);
-
-    // Try to get the nickname of the author
-    // otherwise default to their username
-    //
-    // We want their nick if we need to create an entry for them
-    let user_nick = message
-        .author
-        .nick_in(ctx, guild_id)
-        .await
-        .unwrap_or(message.author.name.clone());
 
     // we're fine to do this before the give_user_money call later because we won't use
     // this older money value
-    let db_user = db_helper.get_user(&message.author).await;
-    if let Err(e) = db_user {
-        error!("Error occuring when attempting to get user: {:?}", e);
-        // return here because we can't do the other operations without a user in the DB
-        return;
-    }
+    let db_user = db_helper
+        .get_user(&message.author)
+        .await
+        .via(RewardError::new("Couldn't get user in database"))?;
 
-    let db_user = db_user.unwrap();
-
-    if let Err(e) = db_helper
+    db_helper
         .give_user_money(&message.author, money_rand())
         .await
-    {
-        error!("Error occurred during message income: {:?}", e);
-    }
+        .via(RewardError::new("Couldn't give user money for message"))?;
 
     let prev_level = db::exp_to_level(db_user.exp);
 
-    // Give the user exp
-    match db_helper
+    let res = db_helper
         .give_user_exp(&message.author, EXP_PER_MESSAGE)
         .await
-    {
-        Ok(res) => {
-            let new_level = db::exp_to_level(res);
+        .via(RewardError::new("Could not give user exp for message"))?;
 
-            if new_level > prev_level {
-                debug!(
-                    "User {}'s level has changed from {} to {}!",
-                    message.author.mention(),
-                    prev_level,
-                    new_level
-                );
+    let new_level = db::exp_to_level(res);
 
-                if let Err(e) = message
-                    .reply_mention(
-                        &ctx,
-                        format!("You leveled up from {prev_level} to {new_level}!"),
-                    )
-                    .await
-                {
-                    error!(
-                        "Error when trying to send message to {}: {:?}",
-                        user_nick, e
-                    );
-                }
-            }
+    if new_level > prev_level {
+        debug!(
+            "User {}'s level has changed from {} to {}!",
+            message.author.mention(),
+            prev_level,
+            new_level
+        );
 
-            // User has leveled up!
-        }
-        Err(e) => {
-            error!("Error when attempting to give user exp: {:?}", e);
-        }
+        message
+            .reply_mention(
+                &ctx,
+                format!("You leveled up from {prev_level} to {new_level}!"),
+            )
+            .await
+            .via(RewardError::new(
+                "Error when trying to send level up message",
+            ))?;
     }
+
+    Ok(())
 }
 
 #[instrument(skip_all, fields(message = message.content))]
-async fn dad_bot_response(ctx: &Context, message: &Message) {
+async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<(), Problem> {
     let message_content = message.content_safe(ctx).to_lowercase();
 
     // To Future Me: Just plug this RegEx in on some website if you forget what it does
@@ -232,25 +260,25 @@ async fn dad_bot_response(ctx: &Context, message: &Message) {
             reply = s.trim();
         }
 
-        match message
+        let message = message
             .reply(ctx, format!("Hi {reply}, I'm Johnson!"))
             .await
-        {
-            Err(e) => {
-                error!(
-                    "Johnson bot failed when attempting to respond to I'm message: {:?}",
-                    e
-                );
-            }
-            Ok(m) => {
-                info!("Johnson bot replied to im message with {}", m.content);
-            }
-        }
+            .via(DadBotError::new(
+                "Johnson bot failed to respond to I'm message",
+            ))?;
+
+        info!("Johnson bot replied to im message with {}", message.content);
     }
+
+    Ok(())
 }
 
 #[instrument(skip_all)]
-async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordResponse]) {
+async fn keyword_response(
+    ctx: &Context,
+    message: &Message,
+    kwrs: &[KeywordResponse],
+) -> Result<(), Problem> {
     for kwr in kwrs {
         match kwr {
             KeywordResponse::SingleKW { kw, response } => {
@@ -262,60 +290,44 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
 
                 // if pos_isolated_word.is_some() || pos_final_word.is_some() {
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    match message.reply(ctx, response).await {
-                        Ok(m) => {
-                            info!("Johnson Bot replied to keyword {}, with {}", kw, m.content)
-                        }
-                        Err(e) => {
-                            error!(
-                                "Johnson Bot could not reply to keyword, {}. Error: {:?}",
-                                kw, e
-                            );
-                        }
-                    }
+                    let message = message.reply(ctx, response).await.via(KeywordError {
+                        keyword: kwr.to_owned(),
+                    })?;
+                    info!(
+                        "Johnson Bot replied to keyword {}, with {}",
+                        kw, message.content
+                    )
                 }
             }
             KeywordResponse::MultiKW { kws, response } => {
                 let kw_re = multi_keyword_regex(kws);
 
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    match message.reply(ctx, response).await {
-                        Ok(m) => {
-                            info!(
-                                "Johnson Bot replied to multi keyword {:?}, with {}",
-                                kws, m.content
-                            )
-                        }
-                        Err(e) => {
-                            error!(
-                                "Johnson Bot could not reply to multi keyword, {:?}. Error: {:?}",
-                                kws, e
-                            );
-                        }
-                    }
+                    let message = message.reply(ctx, response).await.via(KeywordError {
+                        keyword: kwr.to_owned(),
+                    })?;
+
+                    info!(
+                        "Johnson Bot replied to multi keyword {:?}, with {}",
+                        kws, message.content
+                    );
                 }
             }
             KeywordResponse::MultiResponse { kw, responses } => {
                 let kw_re = single_keyword_regex(kw);
 
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    match message
+                    let message = message
                         .reply(ctx, random_choice_unweighted(responses))
                         .await
-                    {
-                        Ok(m) => {
-                            info!(
-                                "Johnson Bot replied to multi response keyword {}, with {}",
-                                kw, m.content
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                "Johnson Bot could not reply to multi response keyword {}. Error {:?}",
-                                kw, e
-                            );
-                        }
-                    }
+                        .via(KeywordError {
+                            keyword: kwr.to_owned(),
+                        })?;
+
+                    info!(
+                        "Johnson Bot replied to multi response keyword {}, with {}",
+                        kw, message.content
+                    );
                 }
             }
             KeywordResponse::WeightedResponses {
@@ -326,46 +338,34 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
                 let kw_re = single_keyword_regex(kw);
 
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    match message
+                    let message = message
                         .reply(ctx, random_choice_weighted(responses, weights))
                         .await
-                    {
-                        Ok(m) => {
-                            info!(
-                                "Johnson Bot replied to weighted response keyword {}, with {}",
-                                kw, m.content
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                "Johnson Bot could not reply to weighted response keyword {}. Error: {:?}",
-                                kw, e
-                            );
-                        }
-                    }
+                        .via(KeywordError {
+                            keyword: kwr.to_owned(),
+                        })?;
+
+                    info!(
+                        "Johnson Bot replied to weighted response keyword {}, with {}",
+                        kw, message.content
+                    );
                 }
             }
             KeywordResponse::MultiKWResponse { kws, responses } => {
                 let kw_re = multi_keyword_regex(kws);
 
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    match message
+                    let message = message
                         .reply(ctx, random_choice_unweighted(responses))
                         .await
-                    {
-                        Ok(m) => {
-                            info!(
-                                "Johnson Bot replied to multi response keywords: {:?}, with {}",
-                                kws, m.content
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                "Johnson Bot could not reply to multi response keywords, {:?}. Error: {:?}",
-                                kws, e
-                            );
-                        }
-                    }
+                        .via(KeywordError {
+                            keyword: kwr.to_owned(),
+                        })?;
+
+                    info!(
+                        "Johnson Bot replied to multi response keywords: {:?}, with {}",
+                        kws, message.content
+                    );
                 }
             }
             KeywordResponse::MultiKWWeightedResponses {
@@ -376,30 +376,24 @@ async fn keyword_response(ctx: &Context, message: &Message, kwrs: &[KeywordRespo
                 let kw_re = multi_keyword_regex(kws);
 
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    match message
+                    let message = message
                         .reply(ctx, random_choice_weighted(responses, weights))
                         .await
-                    {
-                        Ok(m) => {
-                            info!(
-                                "Johnson Bot replied to weighted response keywords: {:?}, with {}",
-                                kws, m.content
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                "Johnson Bot could not reply to weighted response keywords, {:?}. Error: {:?}",
-                                kws, e
-                            );
-                        }
-                    }
+                        .via(KeywordError {
+                            keyword: kwr.to_owned(),
+                        })?;
+
+                    info!(
+                        "Johnson Bot replied to weighted response keywords: {:?}, with {}",
+                        kws, message.content
+                    );
                 }
             }
         }
     }
-}
 
-gloss_error!(NewGuildMemberError, "Error processing new guild member");
+    Ok(())
+}
 
 #[instrument(skip_all)]
 pub async fn event_handler(
@@ -414,6 +408,8 @@ pub async fn event_handler(
             let http_clone = Arc::clone(&ctx.http);
             let data_clone = Arc::clone(&ctx.data);
 
+            // Errors will have to look ugly here because they're in a separate task
+            // not covered by the error_handler
             match get_friend_id() {
                 Some(friend_id) => {
                     tokio::spawn(async move {
@@ -484,14 +480,27 @@ pub async fn event_handler(
                     return Ok(());
                 }
 
-                reward_messenger(guild_id, ctx, new_message).await;
+                let mut problems = Problems::default();
+
+                // These have the ? at the end but will NOT exit early with an error
+                // give_ok only returns early with the FailFast version of a problems recevier
+                reward_messenger(guild_id, ctx, new_message)
+                    .await
+                    .give_ok(&mut problems)?;
 
                 // Handle result of dad_bot_response
-                dad_bot_response(ctx, new_message).await;
+                dad_bot_response(ctx, new_message)
+                    .await
+                    .give_ok(&mut problems)?;
 
                 let kw_responses = &data.kwr;
+                keyword_response(ctx, new_message, kw_responses)
+                    .await
+                    .give_ok(&mut problems)?;
 
-                keyword_response(ctx, new_message, kw_responses).await;
+                // TODO: Do some special handling of multiple errors.
+                // Right now it only works with the first error found
+                problems.check()?
             }
 
             Ok(())
