@@ -147,6 +147,7 @@ async fn main() {
         event_handler: |ctx, event, framework, data| {
             Box::pin(crate::events::event_handler(ctx, event, framework, data))
         },
+        on_error: |err| Box::pin(events::error_handle(err)),
         ..Default::default()
     };
 

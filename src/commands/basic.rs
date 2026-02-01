@@ -16,7 +16,7 @@ use poise::{
 use problemo::static_gloss_error;
 use tracing::{info, instrument};
 
-#[poise::command(slash_command, prefix_command, on_error = "error_handle")]
+#[poise::command(slash_command, prefix_command)]
 #[instrument(name = "ping", skip_all)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say(format!("Ping! {} ms", ctx.ping().await.as_millis()))
@@ -27,7 +27,7 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
     let interaction = match ctx {
         Context::Application(a) => a.interaction,
@@ -55,7 +55,7 @@ pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn version(
     ctx: Context<'_>,
     #[description = "Tell the whole world?"] annoy_others: bool,
@@ -70,7 +70,7 @@ pub async fn version(
     Ok(())
 }
 
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn smile(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send(CreateReply::default().reply(true).content("https://cdn.discordapp.com/attachments/322818382506229768/1409415101450293278/Johnson_Smile.png?ex=68ad4b99&is=68abfa19&hm=9add5e51f18ee34b825705d8c142e22380dab4f42c98619d420be05b3b4c03cc")).await?;
     Ok(())
@@ -79,7 +79,7 @@ pub async fn smile(ctx: Context<'_>) -> Result<(), Error> {
 static_gloss_error!(TestError, "This is a test");
 static_gloss_error!(TestError2, "This is the next test");
 
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn test_problem(ctx: Context<'_>) -> Result<(), Error> {
     Err(TestError::as_problem("there is more testing")
         .via(TestError2::new("There is now a second test")))

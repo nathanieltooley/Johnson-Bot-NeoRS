@@ -97,7 +97,7 @@ async fn get_participant_choice(
 }
 
 #[instrument(skip_all)]
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn rock_paper_scissors(
     ctx: Context<'_>,
     #[description = "Who you're challenging"] opponent: serenity_prelude::User,
@@ -372,7 +372,7 @@ pub async fn rock_paper_scissors(
 }
 
 #[instrument(skip_all)]
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn slots(_ctx: Context<'_>, _bet: u64) -> Result<(), Error> {
     // Create a handful of different options (probably emojis)
 

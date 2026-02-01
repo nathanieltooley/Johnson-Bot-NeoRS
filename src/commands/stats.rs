@@ -1,12 +1,12 @@
-use poise::serenity_prelude::User;
 use poise::CreateReply;
+use poise::serenity_prelude::User;
 
 use crate::custom_types::command::{Context, Error};
 use crate::db::Database;
 use crate::events::error_handle;
 use crate::utils::message::embed::base_embed;
 
-#[poise::command(slash_command, on_error = "error_handle")]
+#[poise::command(slash_command)]
 pub async fn show_stats(
     ctx: Context<'_>,
     #[description = "Let the whole world know?"] annoy_others: bool,
