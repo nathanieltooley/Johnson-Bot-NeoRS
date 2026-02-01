@@ -6,9 +6,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use poise::serenity_prelude::{
-    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
+    self, Context, CreateEmbed, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
 };
-use poise::{FrameworkContext, FrameworkError};
+use poise::{CreateReply, FrameworkContext, FrameworkError};
 
 use problemo::*;
 use rand::Rng;
@@ -19,6 +19,7 @@ use tracing::{debug, error, info, instrument};
 use crate::checks::slurs;
 use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
 use crate::db::{self, Database};
+use crate::utils::message;
 
 const MONEY_MIN: i64 = 5;
 const MONEY_MAX: i64 = 20;
@@ -33,29 +34,42 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
             let mut error_buf: Vec<u8> = Vec::new();
             writeln!(
                 &mut error_buf,
-                "An error occurred during the execution of a command: "
+                "An error occurred during the execution of the command '{}'",
+                ctx.command().name
             )
-            .expect("Failed to write to error buffer");
+            .expect("Writing to vec buf should not fail");
 
             for cause in &error {
                 writeln!(&mut error_buf, "  - because: {}", cause.error)
-                    .expect("Failed to write to error buffer");
+                    .expect("Writing to vec buf should not fail");
                 for attachment in &cause.attachments {
                     writeln!(&mut error_buf, "      - {:?}", attachment)
-                        .expect("Failed to write to error buffer");
+                        .expect("Writing to vec buf should not fail");
                 }
             }
+
+            let error_string = String::from_utf8(error_buf).expect("Error message is valid utf8");
 
             error!(
                 "An error occurred during the execution of a command, {}. Error: {}",
                 ctx.command().name,
-                String::from_utf8(error_buf).expect("Error message is not utf8")
+                error_string
             );
 
+            let error_embed =
+                message::embed::base_embed().description(format!("```{error_string}```"));
+
             // TODO: Make this look nicer on Discord
-            ctx.say(format!("An error has occurred: {error}"))
+            if let Err(err) = ctx
+                .send(
+                    CreateReply::default()
+                        .content("An error has occurred!")
+                        .embed(error_embed),
+                )
                 .await
-                .unwrap();
+            {
+                error!("Failed to send error message! Fuck! {err}");
+            }
         }
         _ => {
             error!("Oh dear, we have an error {}", error)

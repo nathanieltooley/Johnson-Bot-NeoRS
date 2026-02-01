@@ -75,11 +75,11 @@ pub async fn smile(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-static_gloss_error!(TestError, "This is a test");
-static_gloss_error!(TestError2, "This is the next test");
+static_gloss_error!(TestError, "Test Error");
+static_gloss_error!(TestError2, "Another Test Error");
 
 #[poise::command(slash_command)]
 pub async fn test_problem(_: Context<'_>) -> Result<(), Error> {
-    Err(TestError::as_problem("there is more testing")
-        .via(TestError2::new("There is now a second test")))
+    Err(TestError::as_problem("Something bad happened")
+        .via(TestError2::new("Something bad happened, and then")))
 }
