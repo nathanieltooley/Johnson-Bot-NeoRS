@@ -10,7 +10,6 @@ use tracing::{debug, info, instrument};
 
 use crate::custom_types::command::{Context, Error};
 use crate::db::Database;
-use crate::events::error_handle;
 use crate::utils::message::interaction::wait_for_user_interaction;
 use crate::utils::message::simple_channel_message;
 

@@ -2,7 +2,6 @@
 use crate::{
     built_info,
     custom_types::command::{Context, Error},
-    events::error_handle,
     utils::message::embed::base_embed,
 };
 // use crate::events::error_handle;
@@ -80,7 +79,7 @@ static_gloss_error!(TestError, "This is a test");
 static_gloss_error!(TestError2, "This is the next test");
 
 #[poise::command(slash_command)]
-pub async fn test_problem(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn test_problem(_: Context<'_>) -> Result<(), Error> {
     Err(TestError::as_problem("there is more testing")
         .via(TestError2::new("There is now a second test")))
 }

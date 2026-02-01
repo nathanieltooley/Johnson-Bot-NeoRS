@@ -1,6 +1,5 @@
 pub mod command {
     use crate::serenity::prelude::TypeMapKey;
-    use futures::lock::Mutex;
     use poise::serenity_prelude::{OnlineStatus, Role, VoiceState};
     use problemo::Problem;
     use reqwest::Client as HttpClient;

@@ -2,7 +2,6 @@ use poise::serenity_prelude::Role;
 
 use crate::custom_types::command::{Context, Error};
 use crate::db::Database;
-use crate::events::error_handle;
 
 #[poise::command(slash_command)]
 pub async fn set_welcome_role(ctx: Context<'_>, welcome_role: Role) -> Result<(), Error> {

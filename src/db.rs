@@ -2,15 +2,14 @@ use crate::custom_types::command::Context as JContext;
 use crate::custom_types::command::SerenityCtxData;
 use crate::custom_types::mongo_schema::DbUser;
 use crate::custom_types::mongo_schema::ServerConfig;
-use crate::utils::math::round_to_100;
 
 use std::f64::consts::E;
 
 use poise::serenity_prelude::RoleId;
 use poise::serenity_prelude::User;
 use poise::serenity_prelude::{Context, GuildId};
-use sqlx::sqlite::SqliteQueryResult;
 use sqlx::SqlitePool;
+use sqlx::sqlite::SqliteQueryResult;
 use tracing::info;
 use tracing::instrument;
 
@@ -221,18 +220,6 @@ impl<'context> Database<'context> {
 
         Ok(())
     }
-}
-
-pub fn level_to_exp(l: i64) -> i64 {
-    // I use two "as" "hacks" since Into and TryInto didn't want to work
-    // I feel like i64 should be able to go into f64 (at least through TryInto) but whatever
-    //
-    // Looking into it, this seems like the best way to do it other than
-    // implementing an algorithm for it
-    round_to_100(
-        ((XP_MULTIPLIER * E.powf(EXPO_MULTIPLIER * (l - 1) as f64)) - XP_TRANSLATION).round()
-            as i64,
-    )
 }
 
 pub fn exp_to_level(exp: i64) -> i64 {

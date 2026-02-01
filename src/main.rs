@@ -11,7 +11,7 @@ use std::env;
 use std::str::FromStr;
 
 use poise::Command;
-use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId, VoiceState};
+use poise::serenity_prelude::{self as serenity, GatewayIntents, GuildId};
 use problemo::*;
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnectOptions;

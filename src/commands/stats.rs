@@ -3,7 +3,6 @@ use poise::serenity_prelude::User;
 
 use crate::custom_types::command::{Context, Error};
 use crate::db::Database;
-use crate::events::error_handle;
 use crate::utils::message::embed::base_embed;
 
 #[poise::command(slash_command)]
