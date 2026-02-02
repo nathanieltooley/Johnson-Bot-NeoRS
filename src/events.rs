@@ -84,24 +84,7 @@ impl Display for KeywordError {
 pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
-            let mut error_buf: Vec<u8> = Vec::new();
-            writeln!(
-                &mut error_buf,
-                "An error occurred during the execution of the command '{}'",
-                ctx.command().name
-            )
-            .expect("Writing to vec buf should not fail");
-
-            for cause in &error {
-                writeln!(&mut error_buf, "  - because: {}", cause.error)
-                    .expect("Writing to vec buf should not fail");
-                for attachment in &cause.attachments {
-                    writeln!(&mut error_buf, "      - {:?}", attachment)
-                        .expect("Writing to vec buf should not fail");
-                }
-            }
-
-            let error_string = String::from_utf8(error_buf).expect("Error message is valid utf8");
+            let error_string = create_pretty_error_string(error);
 
             error!(
                 "An error occurred during the execution of a command, {}. Error: {}",
@@ -124,65 +107,39 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
             }
         }
         // TODO: Add handle for event_handler errors
+        FrameworkError::EventHandler {
+            error,
+            ctx: _,
+            event,
+            framework: _,
+            ..
+        } => {
+            let error_string = create_pretty_error_string(error);
+
+            error!(
+                "An error occurred during the handling of an event, {}. Error: {}",
+                event.snake_case_name(),
+                error_string
+            );
+
+            // TODO: Add way to send errors to a specific channel
+        }
         _ => {
             error!("Oh dear, we have an error {}", error)
         }
     }
 }
 
-// Extract out the code for this logic since ThreadRNG is not thread safe
-fn money_rand() -> i64 {
-    let mut rng = rand::thread_rng();
+fn create_pretty_error_string(problem: Error) -> String {
+    let mut error_buf: Vec<u8> = Vec::new();
+    writeln!(&mut error_buf, "Error backtrace: ").expect("Writing to vec buf should not fail");
 
-    rng.gen_range(MONEY_MIN..MONEY_MAX)
-}
-
-fn single_keyword_regex(kw: &str) -> Regex {
-    Regex::new(&format!(r"(^|\b)({kw})($|\>)")).unwrap()
-}
-
-fn multi_keyword_regex(kws: &[String]) -> Regex {
-    let mut alternate_string = String::new();
-
-    for i in 0..kws.len() {
-        // Don't put the | symbol on last keyword
-        if i == kws.len() - 1 {
-            alternate_string.push_str(&kws[i]);
-            continue;
-        }
-
-        alternate_string.push_str(&format!("{}|", kws[i]))
+    for cause in &problem {
+        writeln!(&mut error_buf, "  - Error: {}", cause.error)
+            .expect("Writing to vec buf should not fail");
     }
 
-    Regex::new(&format!(r"(^|\b)({alternate_string})($|\>)")).unwrap()
-}
-
-fn random_choice_unweighted(responses: &[String]) -> &String {
-    let rand_index = rand::thread_rng().gen_range(0..responses.len());
-
-    &responses[rand_index]
-}
-
-fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'a String {
-    // Only errors if len of weights is 0
-    let weighted_dist = WeightedIndex::new(weights).unwrap();
-
-    &responses[weighted_dist.sample(&mut rand::thread_rng())]
-}
-
-fn get_friend_id() -> Option<UserId> {
-    let id = env::var("FRIEND_ID");
-    match id {
-        Ok(str_id) => match str_id.parse::<u64>() {
-            Ok(id) => {
-                return Some(id.into());
-            }
-            Err(_) => error!("Invalid FRIEND_ID"),
-        },
-        Err(_) => error!("Missing FRIEND_ID"),
-    }
-
-    None
+    String::from_utf8(error_buf).expect("Error message is valid utf8")
 }
 
 #[instrument(skip_all, fields(guild_id, message=message.content))]
@@ -567,4 +524,59 @@ pub async fn event_handler(
         }
         _ => Ok(()),
     }
+}
+
+// Extract out the code for this logic since ThreadRNG is not thread safe
+fn money_rand() -> i64 {
+    let mut rng = rand::thread_rng();
+
+    rng.gen_range(MONEY_MIN..MONEY_MAX)
+}
+
+fn single_keyword_regex(kw: &str) -> Regex {
+    Regex::new(&format!(r"(^|\b)({kw})($|\>)")).unwrap()
+}
+
+fn multi_keyword_regex(kws: &[String]) -> Regex {
+    let mut alternate_string = String::new();
+
+    for i in 0..kws.len() {
+        // Don't put the | symbol on last keyword
+        if i == kws.len() - 1 {
+            alternate_string.push_str(&kws[i]);
+            continue;
+        }
+
+        alternate_string.push_str(&format!("{}|", kws[i]))
+    }
+
+    Regex::new(&format!(r"(^|\b)({alternate_string})($|\>)")).unwrap()
+}
+
+fn random_choice_unweighted(responses: &[String]) -> &String {
+    let rand_index = rand::thread_rng().gen_range(0..responses.len());
+
+    &responses[rand_index]
+}
+
+fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'a String {
+    // Only errors if len of weights is 0
+    let weighted_dist = WeightedIndex::new(weights).unwrap();
+
+    &responses[weighted_dist.sample(&mut rand::thread_rng())]
+}
+
+fn get_friend_id() -> Option<UserId> {
+    let id = env::var("FRIEND_ID");
+    match id {
+        Ok(str_id) => match str_id.parse::<u64>() {
+            Ok(id) => {
+                return Some(id.into());
+            }
+            Err(_) => error!("Invalid FRIEND_ID"),
+        },
+        Err(_) => error!("Missing FRIEND_ID"),
+    }
+
+    None
 }
