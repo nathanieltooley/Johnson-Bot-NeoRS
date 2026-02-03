@@ -97,6 +97,8 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
             let error_embed =
                 message::embed::base_embed().description(format!("```{error_string}```"));
 
+            // TODO: Allow this to be sent to error channel as well. Maybe reply with a generic
+            // error message but the more detailed one can be in the error channel?
             if let Err(err) = ctx
                 .send(
                     CreateReply::default()
