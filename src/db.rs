@@ -7,7 +7,7 @@ use std::f64::consts::E;
 
 use poise::serenity_prelude::RoleId;
 use poise::serenity_prelude::User;
-use poise::serenity_prelude::{Context, GuildId};
+use poise::serenity_prelude::{ChannelId, Context, GuildId};
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteQueryResult;
 use tracing::info;
@@ -214,6 +214,28 @@ impl<'context> Database<'context> {
             UPDATE SET welcome_role_id = $2",
             guild_id,
             role_id
+        )
+        .execute(&pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn save_error_channel(&self, guild: GuildId, channel: ChannelId) -> sqlx::Result<()> {
+        let pool = self.ctx.get_conn().await;
+        let guild_id = guild_to_id(guild);
+        let channel_id: i64 = channel.into();
+
+        sqlx::query!(
+            "
+            INSERT INTO server_config(id, error_channel_id)
+            VALUES ($1, $2)
+            ON CONFLICT(id)
+            DO
+                UPDATE SET error_channel_id = $2
+            ",
+            guild_id,
+            channel_id
         )
         .execute(&pool)
         .await?;

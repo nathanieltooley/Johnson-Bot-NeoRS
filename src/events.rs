@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use poise::serenity_prelude::{
-    self, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
+    self, ChannelId, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
 };
 use poise::{CreateReply, FrameworkContext, FrameworkError};
 
@@ -32,6 +32,8 @@ const MESSAGE_TIME: Duration = Duration::from_mins(30);
 gloss_error!(NewGuildMemberError, "Error processing new guild member");
 static_gloss_error!(RewardError, "Error while trying to give user rewards");
 static_gloss_error!(DadBotError, "Error while trying to make funny dad joke");
+
+attachment!(GuildIdAttachment, GuildId);
 
 #[derive(Debug)]
 struct KeywordError {
@@ -84,7 +86,7 @@ impl Display for KeywordError {
 pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
-            let error_string = create_pretty_error_string(error);
+            let error_string = create_pretty_error_string(&error);
 
             error!(
                 "An error occurred during the execution of a command, {}. Error: {}",
@@ -109,12 +111,12 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
         // TODO: Add handle for event_handler errors
         FrameworkError::EventHandler {
             error,
-            ctx: _,
+            ctx,
             event,
             framework: _,
             ..
         } => {
-            let error_string = create_pretty_error_string(error);
+            let error_string = create_pretty_error_string(&error);
 
             error!(
                 "An error occurred during the handling of an event, {}. Error: {}",
@@ -122,7 +124,30 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
                 error_string
             );
 
-            // TODO: Add way to send errors to a specific channel
+            // Send a message to the guild's error channel if needed
+            if let Some(guild_attach) = error.attachment_of_type::<GuildIdAttachment>() {
+                let db = Database::new(ctx);
+                if let Ok(server_config) = db.get_server_conf(guild_attach.0).await
+                    && let Some(error_channel) = server_config.error_channel_id
+                {
+                    let channel_id = ChannelId::new(error_channel as u64);
+
+                    if let Ok(channel) = channel_id.to_channel(ctx).await
+                        && let Some(g_channel) = channel.guild()
+                        && let Err(err) = g_channel
+                            .send_message(
+                                ctx,
+                                CreateMessage::new().add_embed(
+                                    message::embed::base_embed()
+                                        .description(format!("```{error_string}```")),
+                                ),
+                            )
+                            .await
+                    {
+                        error!("Failed to send error message to error channel: {err}")
+                    }
+                }
+            }
         }
         _ => {
             error!("Oh dear, we have an error {}", error)
@@ -130,11 +155,11 @@ pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     }
 }
 
-fn create_pretty_error_string(problem: Error) -> String {
+fn create_pretty_error_string(problem: &Error) -> String {
     let mut error_buf: Vec<u8> = Vec::new();
     writeln!(&mut error_buf, "Error backtrace: ").expect("Writing to vec buf should not fail");
 
-    for cause in &problem {
+    for cause in problem {
         writeln!(&mut error_buf, "  - Error: {}", cause.error)
             .expect("Writing to vec buf should not fail");
     }
@@ -143,7 +168,11 @@ fn create_pretty_error_string(problem: Error) -> String {
 }
 
 #[instrument(skip_all, fields(guild_id, message=message.content))]
-async fn reward_messenger(_: GuildId, ctx: &Context, message: &Message) -> Result<(), Problem> {
+async fn reward_messenger(
+    guild_id: GuildId,
+    ctx: &Context,
+    message: &Message,
+) -> Result<(), Problem> {
     let db_helper = Database::new(ctx);
 
     // we're fine to do this before the give_user_money call later because we won't use
@@ -151,19 +180,22 @@ async fn reward_messenger(_: GuildId, ctx: &Context, message: &Message) -> Resul
     let db_user = db_helper
         .get_user(&message.author)
         .await
-        .via(RewardError::new("Couldn't get user in database"))?;
+        .via(RewardError::new("Couldn't get user in database"))
+        .with(GuildIdAttachment::new(guild_id))?;
 
     db_helper
         .give_user_money(&message.author, money_rand())
         .await
-        .via(RewardError::new("Couldn't give user money for message"))?;
+        .via(RewardError::new("Couldn't give user money for message"))
+        .with(GuildIdAttachment::new(guild_id))?;
 
     let prev_level = db::exp_to_level(db_user.exp);
 
     let res = db_helper
         .give_user_exp(&message.author, EXP_PER_MESSAGE)
         .await
-        .via(RewardError::new("Could not give user exp for message"))?;
+        .via(RewardError::new("Could not give user exp for message"))
+        .with(GuildIdAttachment::new(guild_id))?;
 
     let new_level = db::exp_to_level(res);
 
@@ -183,14 +215,19 @@ async fn reward_messenger(_: GuildId, ctx: &Context, message: &Message) -> Resul
             .await
             .via(RewardError::new(
                 "Error when trying to send level up message",
-            ))?;
+            ))
+            .with(GuildIdAttachment::new(guild_id))?;
     }
 
     Ok(())
 }
 
 #[instrument(skip_all, fields(message = message.content))]
-async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<(), Problem> {
+async fn dad_bot_response(
+    guild_id: GuildId,
+    ctx: &Context,
+    message: &Message,
+) -> Result<(), Problem> {
     let message_content = message.content_safe(ctx).to_lowercase();
 
     // To Future Me: Just plug this RegEx in on some website if you forget what it does
@@ -222,7 +259,8 @@ async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<(), Proble
             .await
             .via(DadBotError::new(
                 "Johnson bot failed to respond to I'm message",
-            ))?;
+            ))
+            .with(GuildIdAttachment::new(guild_id))?;
 
         info!("Johnson bot replied to im message with {}", message.content);
     }
@@ -232,6 +270,7 @@ async fn dad_bot_response(ctx: &Context, message: &Message) -> Result<(), Proble
 
 #[instrument(skip_all)]
 async fn keyword_response(
+    guild_id: GuildId,
     ctx: &Context,
     message: &Message,
     kwrs: &[KeywordResponse],
@@ -247,9 +286,14 @@ async fn keyword_response(
 
                 // if pos_isolated_word.is_some() || pos_final_word.is_some() {
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    let message = message.reply(ctx, response).await.via(KeywordError {
-                        keyword: kwr.to_owned(),
-                    })?;
+                    let message = message
+                        .reply(ctx, response)
+                        .await
+                        .via(KeywordError {
+                            keyword: kwr.to_owned(),
+                        })
+                        .with(GuildIdAttachment::new(guild_id))?;
+
                     info!(
                         "Johnson Bot replied to keyword {}, with {}",
                         kw, message.content
@@ -260,9 +304,13 @@ async fn keyword_response(
                 let kw_re = multi_keyword_regex(kws);
 
                 if kw_re.is_match(&message.content_safe(ctx)) {
-                    let message = message.reply(ctx, response).await.via(KeywordError {
-                        keyword: kwr.to_owned(),
-                    })?;
+                    let message = message
+                        .reply(ctx, response)
+                        .await
+                        .via(KeywordError {
+                            keyword: kwr.to_owned(),
+                        })
+                        .with(GuildIdAttachment::new(guild_id))?;
 
                     info!(
                         "Johnson Bot replied to multi keyword {:?}, with {}",
@@ -279,7 +327,8 @@ async fn keyword_response(
                         .await
                         .via(KeywordError {
                             keyword: kwr.to_owned(),
-                        })?;
+                        })
+                        .with(GuildIdAttachment::new(guild_id))?;
 
                     info!(
                         "Johnson Bot replied to multi response keyword {}, with {}",
@@ -300,7 +349,8 @@ async fn keyword_response(
                         .await
                         .via(KeywordError {
                             keyword: kwr.to_owned(),
-                        })?;
+                        })
+                        .with(GuildIdAttachment::new(guild_id))?;
 
                     info!(
                         "Johnson Bot replied to weighted response keyword {}, with {}",
@@ -317,7 +367,8 @@ async fn keyword_response(
                         .await
                         .via(KeywordError {
                             keyword: kwr.to_owned(),
-                        })?;
+                        })
+                        .with(GuildIdAttachment::new(guild_id))?;
 
                     info!(
                         "Johnson Bot replied to multi response keywords: {:?}, with {}",
@@ -338,7 +389,8 @@ async fn keyword_response(
                         .await
                         .via(KeywordError {
                             keyword: kwr.to_owned(),
-                        })?;
+                        })
+                        .with(GuildIdAttachment::new(guild_id))?;
 
                     info!(
                         "Johnson Bot replied to weighted response keywords: {:?}, with {}",
@@ -446,18 +498,16 @@ pub async fn event_handler(
                     .give_ok(&mut problems)?;
 
                 // Handle result of dad_bot_response
-                dad_bot_response(ctx, new_message)
+                dad_bot_response(guild_id, ctx, new_message)
                     .await
                     .give_ok(&mut problems)?;
 
                 let kw_responses = &data.kwr;
-                keyword_response(ctx, new_message, kw_responses)
+                keyword_response(guild_id, ctx, new_message, kw_responses)
                     .await
                     .give_ok(&mut problems)?;
 
-                // TODO: Do some special handling of multiple errors.
-                // Right now it only works with the first error found
-                problems.check()?
+                problems.check()?;
             }
 
             Ok(())
@@ -487,7 +537,11 @@ pub async fn event_handler(
                 Err(e) => match e {
                     // do nothing if there is no row
                     sqlx::error::Error::RowNotFound => Ok(()),
-                    _ => Err(NewGuildMemberError::as_problem("Couldn't get server config").via(e)),
+                    _ => Err(
+                        NewGuildMemberError::as_problem("Couldn't get server config")
+                            .via(e)
+                            .with(GuildIdAttachment::new(new_member.guild_id)),
+                    ),
                 },
             }
         }

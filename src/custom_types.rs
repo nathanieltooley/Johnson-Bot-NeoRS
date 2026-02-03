@@ -96,5 +96,6 @@ pub mod mongo_schema {
     pub struct ServerConfig {
         pub id: i64,
         pub welcome_role_id: Option<i64>,
+        pub error_channel_id: Option<i64>,
     }
 }
