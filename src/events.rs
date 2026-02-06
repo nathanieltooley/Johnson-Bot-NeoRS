@@ -6,8 +6,10 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
+use poise::serenity_prelude::prelude::TypeMap;
 use poise::serenity_prelude::{
-    self, ChannelId, Context, CreateMessage, FullEvent, GuildId, Mentionable, Message, UserId,
+    self, ChannelId, Context, CreateMessage, FullEvent, GuildId, Http, Mentionable, Message, User,
+    UserId,
 };
 use poise::{CreateReply, FrameworkContext, FrameworkError};
 
@@ -16,6 +18,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use rand::distr::weighted::WeightedIndex;
 use regex::Regex;
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument};
 
 use crate::checks::slurs;
@@ -34,6 +37,10 @@ const MESSAGE_CHANCE: f64 = 0.01;
 gloss_error!(NewGuildMemberError, "Error processing new guild member");
 static_gloss_error!(RewardError, "Error while trying to give user rewards");
 static_gloss_error!(DadBotError, "Error while trying to make funny dad joke");
+static_gloss_error!(
+    FriendMessageError,
+    "Error while trying to send funny message"
+);
 
 attachment!(GuildIdAttachment, GuildId);
 
@@ -424,71 +431,26 @@ pub async fn event_handler(
             // Errors will have to look ugly here because they're in a separate task
             // not covered by the error_handler
             match get_friend_id() {
-                Some(friend_id) => {
-                    tokio::spawn(async move {
-                        match http_clone.get_user(friend_id).await {
-                            Ok(friend) => {
-                                let friend_name =
-                                    env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
-
-                                loop {
-                                    let data_map = data_clone.read().await;
-                                    let friend_info = &data_map
-                                        .get::<SerenityCtxData>()
-                                        .expect("Invalid ctx data")
-                                        .friend_info;
-
-                                    if friend_info.online() {
-                                        if rand_chance(MESSAGE_CHANCE) {
-                                            match friend
-                                                .direct_message(
-                                                    &http_clone,
-                                                    CreateMessage::new().content("I want you"),
-                                                )
-                                                .await
-                                            {
-                                                Ok(message) => {
-                                                    tokio::time::sleep(Duration::from_secs(2))
-                                                        .await;
-                                                    if let Err(err) =
-                                                        message.delete(&http_clone).await
-                                                    {
-                                                        error!(
-                                                            "Uh oh, can't get rid of secret message! {err}"
-                                                        )
-                                                    }
-                                                }
-                                                Err(err) => {
-                                                    error!(
-                                                        "Failed to send friend secret message: {err}"
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        if let Err(err) = friend
-                                            .direct_message(
-                                                &http_clone,
-                                                CreateMessage::new().content(format!(
-                                                    "Hey {friend_name}! Uncross your legs and sit up straight!"
-                                                )),
-                                            )
-                                            .await
-                                        {
-                                            error!("Failed to send friend message: {err}");
-                                        }
-
-                                        tokio::time::sleep(MESSAGE_TIME).await;
-                                    } else {
-                                        tokio::time::sleep(Duration::from_secs(10)).await;
-                                    }
+                Some(friend_id) => match http_clone.get_user(friend_id).await {
+                    Ok(friend) => {
+                        let friend_name = env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
+                        tokio::spawn(async move {
+                            loop {
+                                if let Err(problem) =
+                                    friend_thread(&http_clone, &data_clone, &friend, &friend_name)
+                                        .await
+                                {
+                                    error!(
+                                        "Error occurred during loop of friend thread: {problem}"
+                                    );
                                 }
                             }
-                            Err(err) => {
-                                error!("Failed to get friend user: {err}")
-                            }
-                        }
-                    });
-                }
+                        });
+                    }
+                    Err(err) => {
+                        error!("Invalid friend_id! Will not be sending messages");
+                    }
+                },
                 None => error!("No FRIEND_ID, not sending messages"),
             }
 
@@ -670,4 +632,48 @@ fn get_friend_id() -> Option<UserId> {
     }
 
     None
+}
+
+async fn friend_thread(
+    http: &Http,
+    data: &RwLock<TypeMap>,
+    friend: &User,
+    friend_name: &str,
+) -> Result<(), Problem> {
+    loop {
+        let data_map = data.read().await;
+        let friend_info = &data_map
+            .get::<SerenityCtxData>()
+            .expect("Invalid ctx data")
+            .friend_info;
+
+        if friend_info.online() {
+            if rand_chance(MESSAGE_CHANCE) {
+                let message = friend
+                    .direct_message(http, CreateMessage::new().content("i want you"))
+                    .await
+                    .via(FriendMessageError::new("Could not send secret message"))?;
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                message
+                    .delete(http)
+                    .await
+                    .via(FriendMessageError::new("Could not delete secret message!"))?;
+            }
+
+            friend
+                .direct_message(
+                    &http,
+                    CreateMessage::new().content(format!(
+                        "Hey {friend_name}! Uncross your legs and sit up straight!"
+                    )),
+                )
+                .await
+                .via(FriendMessageError::new("Could not send normal message"))?;
+
+            tokio::time::sleep(MESSAGE_TIME).await;
+        } else {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    }
 }
