@@ -13,7 +13,8 @@ use poise::{CreateReply, FrameworkContext, FrameworkError};
 
 use problemo::*;
 use rand::Rng;
-use rand::distributions::{Distribution, WeightedIndex};
+use rand::distr::Distribution;
+use rand::distr::weighted::WeightedIndex;
 use regex::Regex;
 use tracing::{debug, error, info, instrument};
 
@@ -28,6 +29,7 @@ const MONEY_MAX: i64 = 20;
 const EXP_PER_MESSAGE: i64 = 100;
 
 const MESSAGE_TIME: Duration = Duration::from_mins(30);
+const MESSAGE_CHANCE: f64 = 0.01;
 
 gloss_error!(NewGuildMemberError, "Error processing new guild member");
 static_gloss_error!(RewardError, "Error while trying to give user rewards");
@@ -437,6 +439,32 @@ pub async fn event_handler(
                                         .friend_info;
 
                                     if friend_info.online() {
+                                        if rand_chance(MESSAGE_CHANCE) {
+                                            match friend
+                                                .direct_message(
+                                                    &http_clone,
+                                                    CreateMessage::new().content("I want you"),
+                                                )
+                                                .await
+                                            {
+                                                Ok(message) => {
+                                                    tokio::time::sleep(Duration::from_secs(2))
+                                                        .await;
+                                                    if let Err(err) =
+                                                        message.delete(&http_clone).await
+                                                    {
+                                                        error!(
+                                                            "Uh oh, can't get rid of secret message! {err}"
+                                                        )
+                                                    }
+                                                }
+                                                Err(err) => {
+                                                    error!(
+                                                        "Failed to send friend secret message: {err}"
+                                                    );
+                                                }
+                                            }
+                                        }
                                         if let Err(err) = friend
                                             .direct_message(
                                                 &http_clone,
@@ -584,9 +612,16 @@ pub async fn event_handler(
 
 // Extract out the code for this logic since ThreadRNG is not thread safe
 fn money_rand() -> i64 {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
-    rng.gen_range(MONEY_MIN..MONEY_MAX)
+    rng.random_range(MONEY_MIN..MONEY_MAX)
+}
+
+fn rand_chance(chance: f64) -> bool {
+    let mut rng = rand::rng();
+
+    let rand_float = rng.random::<f64>();
+    rand_float < chance
 }
 
 fn single_keyword_regex(kw: &str) -> Regex {
@@ -610,7 +645,7 @@ fn multi_keyword_regex(kws: &[String]) -> Regex {
 }
 
 fn random_choice_unweighted(responses: &[String]) -> &String {
-    let rand_index = rand::thread_rng().gen_range(0..responses.len());
+    let rand_index = rand::rng().random_range(0..responses.len());
 
     &responses[rand_index]
 }
@@ -619,7 +654,7 @@ fn random_choice_weighted<'a>(responses: &'a [String], weights: &Vec<f32>) -> &'
     // Only errors if len of weights is 0
     let weighted_dist = WeightedIndex::new(weights).unwrap();
 
-    &responses[weighted_dist.sample(&mut rand::thread_rng())]
+    &responses[weighted_dist.sample(&mut rand::rng())]
 }
 
 fn get_friend_id() -> Option<UserId> {
