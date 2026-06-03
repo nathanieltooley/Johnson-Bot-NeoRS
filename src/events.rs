@@ -435,10 +435,13 @@ pub async fn event_handler(
                     Ok(friend) => {
                         let friend_name = env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
                         tokio::spawn(async move {
-                            if let Err(problem) =
-                                friend_thread(&http_clone, &data_clone, &friend, &friend_name).await
-                            {
-                                error!("Error occurred during loop of friend thread: {problem}");
+                            loop {
+                                if let Err(problem) =
+                                    friend_thread(&http_clone, &data_clone, &friend, &friend_name)
+                                        .await
+                                {
+                                    error!("Error occurred in friend message thread: {problem}");
+                                }
                             }
                         });
                     }
@@ -635,42 +638,42 @@ async fn friend_thread(
     friend: &User,
     friend_name: &str,
 ) -> Result<(), Problem> {
-    loop {
-        let data_map = data.read().await;
-        let friend_info = &data_map
-            .get::<SerenityCtxData>()
-            .expect("Invalid ctx data")
-            .friend_info;
+    let data_map = data.read().await;
+    let friend_info = &data_map
+        .get::<SerenityCtxData>()
+        .expect("Invalid ctx data")
+        .friend_info;
 
-        if friend_info.online() {
-            if rand_chance(MESSAGE_CHANCE) {
-                let message = friend
-                    .direct_message(http, CreateMessage::new().content("i want you"))
-                    .await
-                    .via(FriendMessageError::new("Could not send secret message"))?;
-
-                tokio::time::sleep(Duration::from_secs(2)).await;
-                message
-                    .delete(http)
-                    .await
-                    .via(FriendMessageError::new("Could not delete secret message!"))?;
-            }
-
-            friend
-                .direct_message(
-                    &http,
-                    CreateMessage::new().content(format!(
-                        "Hey {friend_name}! Uncross your legs and sit up straight!"
-                    )),
-                )
+    if friend_info.online() {
+        if rand_chance(MESSAGE_CHANCE) {
+            let message = friend
+                .direct_message(http, CreateMessage::new().content("i want you"))
                 .await
-                .via(FriendMessageError::new("Could not send normal message"))?;
+                .via(FriendMessageError::new("Could not send secret message"))?;
 
-            info!("Send friend message!");
-
-            tokio::time::sleep(MESSAGE_TIME).await;
-        } else {
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            message
+                .delete(http)
+                .await
+                .via(FriendMessageError::new("Could not delete secret message!"))?;
         }
+
+        friend
+            .direct_message(
+                &http,
+                CreateMessage::new().content(format!(
+                    "Hey {friend_name}! Uncross your legs and sit up straight!"
+                )),
+            )
+            .await
+            .via(FriendMessageError::new("Could not send normal message"))?;
+
+        info!("Send friend message!");
+
+        tokio::time::sleep(MESSAGE_TIME).await;
+    } else {
+        tokio::time::sleep(Duration::from_secs(10)).await;
     }
+
+    Ok(())
 }
