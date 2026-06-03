@@ -435,19 +435,14 @@ pub async fn event_handler(
                     Ok(friend) => {
                         let friend_name = env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
                         tokio::spawn(async move {
-                            loop {
-                                if let Err(problem) =
-                                    friend_thread(&http_clone, &data_clone, &friend, &friend_name)
-                                        .await
-                                {
-                                    error!(
-                                        "Error occurred during loop of friend thread: {problem}"
-                                    );
-                                }
+                            if let Err(problem) =
+                                friend_thread(&http_clone, &data_clone, &friend, &friend_name).await
+                            {
+                                error!("Error occurred during loop of friend thread: {problem}");
                             }
                         });
                     }
-                    Err(err) => {
+                    Err(_) => {
                         error!("Invalid friend_id! Will not be sending messages");
                     }
                 },
