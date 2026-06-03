@@ -671,6 +671,8 @@ async fn friend_thread(
                 .await
                 .via(FriendMessageError::new("Could not send normal message"))?;
 
+            info!("Send friend message!");
+
             tokio::time::sleep(MESSAGE_TIME).await;
         } else {
             tokio::time::sleep(Duration::from_secs(10)).await;
