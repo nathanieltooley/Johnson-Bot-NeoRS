@@ -296,7 +296,7 @@ async fn keyword_response(
                 //
 
                 // if pos_isolated_word.is_some() || pos_final_word.is_some() {
-                if kw_re.is_match(&message.content_safe(ctx)) {
+                if kw_re.is_match(&message.content_safe(ctx).to_lowercase()) {
                     let message = message
                         .reply(ctx, response)
                         .await
@@ -314,7 +314,7 @@ async fn keyword_response(
             KeywordResponse::MultiKW { kws, response } => {
                 let kw_re = multi_keyword_regex(kws);
 
-                if kw_re.is_match(&message.content_safe(ctx)) {
+                if kw_re.is_match(&message.content_safe(ctx).to_lowercase()) {
                     let message = message
                         .reply(ctx, response)
                         .await
@@ -332,7 +332,7 @@ async fn keyword_response(
             KeywordResponse::MultiResponse { kw, responses } => {
                 let kw_re = single_keyword_regex(kw);
 
-                if kw_re.is_match(&message.content_safe(ctx)) {
+                if kw_re.is_match(&message.content_safe(ctx).to_lowercase()) {
                     let message = message
                         .reply(ctx, random_choice_unweighted(responses))
                         .await
@@ -354,7 +354,7 @@ async fn keyword_response(
             } => {
                 let kw_re = single_keyword_regex(kw);
 
-                if kw_re.is_match(&message.content_safe(ctx)) {
+                if kw_re.is_match(&message.content_safe(ctx).to_lowercase()) {
                     let message = message
                         .reply(ctx, random_choice_weighted(responses, weights))
                         .await
@@ -372,7 +372,7 @@ async fn keyword_response(
             KeywordResponse::MultiKWResponse { kws, responses } => {
                 let kw_re = multi_keyword_regex(kws);
 
-                if kw_re.is_match(&message.content_safe(ctx)) {
+                if kw_re.is_match(&message.content_safe(ctx).to_lowercase()) {
                     let message = message
                         .reply(ctx, random_choice_unweighted(responses))
                         .await
@@ -394,7 +394,7 @@ async fn keyword_response(
             } => {
                 let kw_re = multi_keyword_regex(kws);
 
-                if kw_re.is_match(&message.content_safe(ctx)) {
+                if kw_re.is_match(&message.content_safe(ctx).to_lowercase()) {
                     let message = message
                         .reply(ctx, random_choice_weighted(responses, weights))
                         .await
