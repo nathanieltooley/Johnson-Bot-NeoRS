@@ -138,6 +138,8 @@ async fn main() {
         commands::gamble::rock_paper_scissors(),
         commands::roles::set_welcome_role(),
         commands::stats::show_stats(),
+        commands::relations::add_friend(),
+        commands::relations::get_friends(),
     ];
 
     commands
