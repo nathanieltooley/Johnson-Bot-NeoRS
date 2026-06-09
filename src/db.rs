@@ -5,9 +5,7 @@ use crate::custom_types::mongo_schema::ServerConfig;
 
 use std::f64::consts::E;
 
-use poise::serenity_prelude::RoleId;
-use poise::serenity_prelude::User;
-use poise::serenity_prelude::{ChannelId, Context, GuildId};
+use poise::serenity_prelude::{ChannelId, Context, GuildId, RoleId, User, UserId};
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteQueryResult;
 use tracing::info;
@@ -85,7 +83,7 @@ impl<'context> Database<'context> {
         let user_id = user_id as i64;
 
         let db_user = sqlx::query_as!(DbUser,
-            "insert or ignore into users (name, id, vbucks, exp) values($1, $2, $3, $4) returning *",
+            "INSERT or IGNORE into users (name, id, vbucks, exp) values($1, $2, $3, $4) returning *",
             user.name,
             user_id,
             0,
@@ -241,6 +239,45 @@ impl<'context> Database<'context> {
         .await?;
 
         Ok(())
+    }
+
+    pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<()> {
+        let pool = self.ctx.get_conn().await;
+
+        let author_id = user_to_id(author);
+        let target_id = user_to_id(target);
+
+        sqlx::query!(
+            "
+            INSERT or IGNORE INTO friendships(user_from, user_to) VALUES ($1, $2)
+            ",
+            author_id,
+            target_id
+        )
+        .execute(&pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_friends(&self, author: &User) -> sqlx::Result<Vec<UserId>> {
+        let pool = self.ctx.get_conn().await;
+
+        let author_id = user_to_id(author);
+
+        let friends = sqlx::query!(
+            "
+                SELECT user_to FROM friendships WHERE user_from = $1
+            ",
+            author_id
+        )
+        .fetch_all(&pool)
+        .await?
+        .into_iter()
+        .map(|r| UserId::new(r.user_to as u64))
+        .collect();
+
+        Ok(friends)
     }
 }
 
