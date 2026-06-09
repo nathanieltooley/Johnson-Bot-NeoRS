@@ -241,7 +241,13 @@ impl<'context> Database<'context> {
         Ok(())
     }
 
-    pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<()> {
+    /// Adds a one-way friendship between the Author and the Target. Returns true if friendship
+    /// already exists.
+    pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<bool> {
+        if self.has_friend(author, target).await? {
+            return Ok(true);
+        }
+
         let pool = self.ctx.get_conn().await;
 
         let author_id = user_to_id(author);
@@ -257,7 +263,7 @@ impl<'context> Database<'context> {
         .execute(&pool)
         .await?;
 
-        Ok(())
+        Ok(false)
     }
 
     pub async fn get_friends(&self, author: &User) -> sqlx::Result<Vec<UserId>> {
@@ -278,6 +284,42 @@ impl<'context> Database<'context> {
         .collect();
 
         Ok(friends)
+    }
+
+    pub async fn remove_friend(&self, author: &User, target: &User) -> sqlx::Result<()> {
+        let pool = self.ctx.get_conn().await;
+
+        let author_id = user_to_id(author);
+        let target_id = user_to_id(target);
+
+        sqlx::query!(
+            "DELETE FROM friendships WHERE user_from = $1 AND user_to = $2",
+            author_id,
+            target_id
+        )
+        .execute(&pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn has_friend(&self, author: &User, target: &User) -> sqlx::Result<bool> {
+        let pool = self.ctx.get_conn().await;
+
+        let author_id = user_to_id(author);
+        let target_id = user_to_id(target);
+
+        let friend = sqlx::query!(
+            "
+            SELECT * FROM friendships WHERE user_from = $1 AND user_to = $2
+            ",
+            author_id,
+            target_id
+        )
+        .fetch_optional(&pool)
+        .await?;
+
+        Ok(friend.is_some())
     }
 }
 
