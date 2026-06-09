@@ -140,6 +140,7 @@ async fn main() {
         commands::stats::show_stats(),
         commands::relations::add_friend(),
         commands::relations::get_friends(),
+        commands::relations::remove_friend(),
     ];
 
     commands
