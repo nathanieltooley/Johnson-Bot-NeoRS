@@ -47,6 +47,12 @@ pub struct Database<'context> {
     ctx: ContextWrapper<'context>,
 }
 
+#[repr(u8)]
+enum RelationType {
+    Friend = 1,
+    Blocked,
+}
+
 // 'context is the lifetime of the context passed in
 impl<'context> ContextWrapper<'context> {
     async fn get_conn(&self) -> SqlitePool {
@@ -244,26 +250,45 @@ impl<'context> Database<'context> {
     /// Adds a one-way friendship between the Author and the Target. Returns true if friendship
     /// already exists.
     pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<bool> {
-        if self.has_friend(author, target).await? {
-            return Ok(true);
-        }
-
         let pool = self.ctx.get_conn().await;
 
         let author_id = user_to_id(author);
         let target_id = user_to_id(target);
 
-        sqlx::query!(
+        let result = sqlx::query!(
             "
-            INSERT or IGNORE INTO friendships(user_from, user_to) VALUES ($1, $2)
+            REPLACE INTO friendships(user_from, user_to, relation_type) VALUES ($1, $2, $3)
             ",
             author_id,
-            target_id
+            target_id,
+            RelationType::Friend as u8,
         )
         .execute(&pool)
         .await?;
 
-        Ok(false)
+        Ok(result.rows_affected() == 0)
+    }
+
+    /// Adds a one-way 'block' relationship between Author and Target. If there is an existing
+    /// relationship, it will get overridden. Returns true if the user is already blocked.
+    pub async fn block_user(&self, author: &User, target: &User) -> sqlx::Result<bool> {
+        let pool = self.ctx.get_conn().await;
+
+        let author_id = user_to_id(author);
+        let target_id = user_to_id(target);
+
+        let result = sqlx::query!(
+            "
+            REPLACE INTO friendships(user_from, user_to, relation_type) VALUES ($1, $2, $3)
+            ",
+            author_id,
+            target_id,
+            RelationType::Blocked as u8,
+        )
+        .execute(&pool)
+        .await?;
+
+        Ok(result.rows_affected() == 0)
     }
 
     pub async fn get_friends(&self, author: &User) -> sqlx::Result<Vec<UserId>> {
@@ -273,9 +298,10 @@ impl<'context> Database<'context> {
 
         let friends = sqlx::query!(
             "
-                SELECT user_to FROM friendships WHERE user_from = $1
+                SELECT user_to FROM friendships WHERE user_from = $1 AND relation_type = $2
             ",
-            author_id
+            author_id,
+            RelationType::Friend as u8
         )
         .fetch_all(&pool)
         .await?
@@ -286,7 +312,7 @@ impl<'context> Database<'context> {
         Ok(friends)
     }
 
-    pub async fn remove_friend(&self, author: &User, target: &User) -> sqlx::Result<()> {
+    pub async fn remove_relation(&self, author: &User, target: &User) -> sqlx::Result<()> {
         let pool = self.ctx.get_conn().await;
 
         let author_id = user_to_id(author);
@@ -301,25 +327,6 @@ impl<'context> Database<'context> {
         .await?;
 
         Ok(())
-    }
-
-    pub async fn has_friend(&self, author: &User, target: &User) -> sqlx::Result<bool> {
-        let pool = self.ctx.get_conn().await;
-
-        let author_id = user_to_id(author);
-        let target_id = user_to_id(target);
-
-        let friend = sqlx::query!(
-            "
-            SELECT * FROM friendships WHERE user_from = $1 AND user_to = $2
-            ",
-            author_id,
-            target_id
-        )
-        .fetch_optional(&pool)
-        .await?;
-
-        Ok(friend.is_some())
     }
 }
 

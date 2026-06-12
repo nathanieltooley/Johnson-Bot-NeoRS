@@ -139,8 +139,10 @@ async fn main() {
         commands::roles::set_welcome_role(),
         commands::stats::show_stats(),
         commands::relations::add_friend(),
+        commands::relations::block_user(),
         commands::relations::get_friends(),
-        commands::relations::remove_friend(),
+        commands::relations::unfriend(),
+        commands::relations::unblock(),
     ];
 
     commands
