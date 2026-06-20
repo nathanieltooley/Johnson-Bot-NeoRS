@@ -1,8 +1,8 @@
-use tracing::level_filters::LevelFilter;
+use tracing::{Level, level_filters::LevelFilter};
 use tracing_subscriber::{filter, prelude::*};
 pub fn log_init() {
     let stdout_layer = tracing_subscriber::fmt::layer()
-        // .pretty()
+        .pretty()
         .with_filter(LevelFilter::DEBUG);
 
     // Create a rolling file appender
@@ -14,7 +14,6 @@ pub fn log_init() {
 
     // Create a subscriber layer that will output to a file
     let f_layer = tracing_subscriber::fmt::layer()
-        .pretty()
         .json()
         .with_writer(file_appender)
         .with_filter(LevelFilter::DEBUG);
@@ -24,7 +23,7 @@ pub fn log_init() {
             stdout_layer
                 .and_then(f_layer)
                 .with_filter(filter::filter_fn(|metadata| {
-                    metadata.target().contains("johnson") // Only log Johnson Bot logs
+                    metadata.target().contains("johnson") || *metadata.level() == Level::INFO // Only log Johnson Bot logs
                 })),
         )
         .init();
