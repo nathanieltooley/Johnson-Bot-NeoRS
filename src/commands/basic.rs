@@ -2,14 +2,13 @@
 use crate::{
     built_info,
     custom_types::command::{Context, Error},
-    db::Database,
     utils::message::embed::base_embed,
 };
 // use crate::events::error_handle;
 use poise::{
     CreateReply,
     serenity_prelude::{
-        ChannelId, CreateInteractionResponse, CreateInteractionResponseFollowup,
+        CreateInteractionResponse, CreateInteractionResponseFollowup,
         CreateInteractionResponseMessage,
     },
 };
@@ -17,7 +16,7 @@ use problemo::static_gloss_error;
 use tracing::{info, instrument};
 
 #[poise::command(slash_command, prefix_command)]
-#[instrument(name = "ping", skip_all)]
+#[instrument(skip(ctx))]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say(format!("Ping! {} ms", ctx.ping().await.as_millis()))
         .await?;
@@ -28,6 +27,7 @@ pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
     let interaction = match ctx {
         Context::Application(a) => a.interaction,
@@ -56,6 +56,7 @@ pub async fn test_interaction(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn version(
     ctx: Context<'_>,
     #[description = "Tell the whole world?"] annoy_others: bool,
@@ -71,6 +72,7 @@ pub async fn version(
 }
 
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn smile(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send(CreateReply::default().reply(true).content("https://cdn.discordapp.com/attachments/322818382506229768/1409415101450293278/Johnson_Smile.png?ex=68ad4b99&is=68abfa19&hm=9add5e51f18ee34b825705d8c142e22380dab4f42c98619d420be05b3b4c03cc")).await?;
     Ok(())

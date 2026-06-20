@@ -95,8 +95,8 @@ async fn get_participant_choice(
     None
 }
 
-#[instrument(skip_all)]
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn rock_paper_scissors(
     ctx: Context<'_>,
     #[description = "Who you're challenging"] opponent: serenity_prelude::User,

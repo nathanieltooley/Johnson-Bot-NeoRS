@@ -1,9 +1,11 @@
 use poise::serenity_prelude::Role;
+use tracing::instrument;
 
 use crate::custom_types::command::{Context, Error};
 use crate::db::Database;
 
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn set_welcome_role(ctx: Context<'_>, welcome_role: Role) -> Result<(), Error> {
     let client = Database::new(ctx);
     let guild_id = ctx.guild_id();

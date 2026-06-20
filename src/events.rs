@@ -19,7 +19,7 @@ use rand::distr::Distribution;
 use rand::distr::weighted::WeightedIndex;
 use regex::Regex;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument};
+use tracing::{Instrument, debug, error, info, info_span, instrument};
 
 use crate::checks::slurs;
 use crate::custom_types::command::{Data, Error, KeywordResponse, SerenityCtxData};
@@ -92,6 +92,7 @@ impl Display for KeywordError {
     }
 }
 
+#[instrument(skip(error))]
 pub async fn error_handle(error: FrameworkError<'_, Data, Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
@@ -178,7 +179,7 @@ fn create_pretty_error_string(problem: &Error) -> String {
     String::from_utf8(error_buf).expect("Error message is valid utf8")
 }
 
-#[instrument(skip_all, fields(guild_id, message=message.content))]
+#[instrument(skip(ctx, message), fields(message=message.content))]
 async fn reward_messenger(
     guild_id: GuildId,
     ctx: &Context,
@@ -233,7 +234,7 @@ async fn reward_messenger(
     Ok(())
 }
 
-#[instrument(skip_all, fields(message = message.content))]
+#[instrument(skip(ctx, message), fields(message = message.content))]
 async fn dad_bot_response(
     guild_id: GuildId,
     ctx: &Context,
@@ -279,7 +280,7 @@ async fn dad_bot_response(
     Ok(())
 }
 
-#[instrument(skip_all)]
+#[instrument(skip(ctx, message, kwrs), fields(message = message.content))]
 async fn keyword_response(
     guild_id: GuildId,
     ctx: &Context,
@@ -424,145 +425,171 @@ pub async fn event_handler(
 ) -> Result<(), Error> {
     match event {
         FullEvent::Ready { data_about_bot: _ } => {
-            info!("Johnson is running!");
-            let http_clone = Arc::clone(&ctx.http);
-            let data_clone = Arc::clone(&ctx.data);
+            async move {
+                info!("Johnson is running!");
+                let http_clone = Arc::clone(&ctx.http);
+                let data_clone = Arc::clone(&ctx.data);
 
-            // Errors will have to look ugly here because they're in a separate task
-            // not covered by the error_handler
-            match get_friend_id() {
-                Some(friend_id) => match http_clone.get_user(friend_id).await {
-                    Ok(friend) => {
-                        let friend_name = env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
-                        tokio::spawn(async move {
-                            loop {
-                                if let Err(problem) =
-                                    friend_thread(&http_clone, &data_clone, &friend, &friend_name)
+                match get_friend_id() {
+                    Some(friend_id) => match http_clone.get_user(friend_id).await {
+                        Ok(friend) => {
+                            let friend_name = env::var("FRIEND_NAME").unwrap_or("Buddy".to_owned());
+                            let friend_thread_span = info_span!("friend_thread");
+                            tokio::spawn(
+                                async move {
+                                    loop {
+                                        if let Err(problem) = friend_thread(
+                                            &http_clone,
+                                            &data_clone,
+                                            &friend,
+                                            &friend_name,
+                                        )
                                         .await
-                                {
-                                    error!("Error occurred in friend message thread: {problem}");
+                                        {
+                                            error!(
+                                                "Error occurred in friend message thread: {problem}"
+                                            );
+                                        }
+                                    }
                                 }
-                            }
-                        });
-                    }
-                    Err(_) => {
-                        error!("Invalid friend_id! Will not be sending messages");
-                    }
-                },
-                None => error!("No FRIEND_ID, not sending messages"),
+                                .instrument(friend_thread_span),
+                            );
+                        }
+                        Err(_) => {
+                            error!("Invalid friend_id! Will not be sending messages");
+                        }
+                    },
+                    None => error!("No FRIEND_ID, not sending messages"),
+                }
             }
+            .instrument(info_span!("ready_event"))
+            .await;
 
             Ok(())
         }
         FullEvent::Message { new_message } => {
-            if let Some(guild_id) = new_message.guild_id {
-                // Ignore bot messages
-                if new_message.author.bot {
-                    return Ok(());
-                }
-
-                if slurs::contains_slur(&new_message.content) {
-                    let _ = new_message.delete(&ctx).await;
-
-                    if let Ok(channel) = new_message.channel(&ctx).await {
-                        // We can unwrap here because of the guild check above
-                        let builder = CreateMessage::new()
-                            .content("Hey! No racism is allowed in my Discord Server!");
-                        let _ = channel.id().send_message(&ctx, builder).await;
+            async move {
+                if let Some(guild_id) = new_message.guild_id {
+                    // Ignore bot messages
+                    if new_message.author.bot {
+                        return Ok(());
                     }
 
-                    info!(
-                        "User {} said a racial slur and their message has been removed. Message: {}",
-                        new_message.author.name, new_message.content
-                    );
+                    if slurs::contains_slur(&new_message.content) {
+                        let _ = new_message.delete(&ctx).await;
 
-                    return Ok(());
-                }
-
-                let mut problems = Problems::default();
-
-                // These have the ? at the end but will NOT exit early with an error
-                // give_ok only returns early with the FailFast version of a problems recevier
-                reward_messenger(guild_id, ctx, new_message)
-                    .await
-                    .give_ok(&mut problems)?;
-
-                // Handle result of dad_bot_response
-                dad_bot_response(guild_id, ctx, new_message)
-                    .await
-                    .give_ok(&mut problems)?;
-
-                let kw_responses = &data.kwr;
-                keyword_response(guild_id, ctx, new_message, kw_responses)
-                    .await
-                    .give_ok(&mut problems)?;
-
-                problems.check()?;
-            }
-
-            Ok(())
-        }
-        FullEvent::GuildMemberAddition { new_member } => {
-            let db_helper = Database::new(ctx);
-            let server_conf = db_helper.get_server_conf(new_member.guild_id).await;
-
-            match server_conf {
-                Ok(conf) => {
-                    if let Some(role) = conf.welcome_role_id {
-                        new_member
-                            .add_role(ctx.http.clone(), role as u64)
-                            .await
-                            .via(NewGuildMemberError::new("failed to set new member's role"))?;
+                        if let Ok(channel) = new_message.channel(&ctx).await {
+                            // We can unwrap here because of the guild check above
+                            let builder = CreateMessage::new()
+                                .content("Hey! No racism is allowed in my Discord Server!");
+                            let _ = channel.id().send_message(&ctx, builder).await;
+                        }
 
                         info!(
-                            "Set user role on join: {} -> {}",
-                            new_member.display_name(),
-                            role
+                            "User {} said a racial slur and their message has been removed. Message: {}",
+                            new_message.author.name, new_message.content
                         );
+
+                        return Ok(());
                     }
 
-                    // Do nothing if there is no role
-                    Ok(())
+                    let mut problems = Problems::default();
+
+                    // These have the ? at the end but will NOT exit early with an error
+                    // give_ok only returns early with the FailFast version of a problems recevier
+                    reward_messenger(guild_id, ctx, new_message)
+                        .await
+                        .give_ok(&mut problems)?;
+
+                    // Handle result of dad_bot_response
+                    dad_bot_response(guild_id, ctx, new_message)
+                        .await
+                        .give_ok(&mut problems)?;
+
+                    let kw_responses = &data.kwr;
+                    keyword_response(guild_id, ctx, new_message, kw_responses)
+                        .await
+                        .give_ok(&mut problems)?;
+
+                    problems.check()?;
                 }
-                Err(e) => match e {
-                    // do nothing if there is no row
-                    sqlx::error::Error::RowNotFound => Ok(()),
-                    _ => Err(
-                        NewGuildMemberError::as_problem("Couldn't get server config")
-                            .via(e)
-                            .with(GuildIdAttachment::new(new_member.guild_id)),
-                    ),
-                },
+
+                Ok(())
+            }.instrument(info_span!("message_event")).await
+        }
+        FullEvent::GuildMemberAddition { new_member } => {
+            async move {
+                let db_helper = Database::new(ctx);
+                let server_conf = db_helper.get_server_conf(new_member.guild_id).await;
+
+                match server_conf {
+                    Ok(conf) => {
+                        if let Some(role) = conf.welcome_role_id {
+                            new_member
+                                .add_role(ctx.http.clone(), role as u64)
+                                .await
+                                .via(NewGuildMemberError::new("failed to set new member's role"))?;
+
+                            info!(
+                                "Set user role on join: {} -> {}",
+                                new_member.display_name(),
+                                role
+                            );
+                        }
+
+                        // Do nothing if there is no role
+                        Ok(())
+                    }
+                    Err(e) => match e {
+                        // do nothing if there is no row
+                        sqlx::error::Error::RowNotFound => Ok(()),
+                        _ => Err(
+                            NewGuildMemberError::as_problem("Couldn't get server config")
+                                .via(e)
+                                .with(GuildIdAttachment::new(new_member.guild_id)),
+                        ),
+                    },
+                }
             }
+            .instrument(info_span!("guild_member_addition_event"))
+            .await
         }
         FullEvent::PresenceUpdate { new_data } => {
-            debug!("{new_data:?}");
-            if let Some(friend_id) = get_friend_id()
-                && friend_id == new_data.user.id
-            {
-                let mut data_map = ctx.data.write().await;
-                let data = data_map
-                    .get_mut::<SerenityCtxData>()
-                    .expect("Invalid ctx data");
-                data.friend_info.status = new_data.status;
-            }
-
-            Ok(())
-        }
-        FullEvent::VoiceStateUpdate { old: _, new } => {
-            // Considered "Online" if they join a voice channel
-            if let Some(ref member) = new.member {
-                let user = &member.user;
+            async move {
+                debug!("{new_data:?}");
                 if let Some(friend_id) = get_friend_id()
-                    && friend_id == user.id
+                    && friend_id == new_data.user.id
                 {
                     let mut data_map = ctx.data.write().await;
                     let data = data_map
                         .get_mut::<SerenityCtxData>()
                         .expect("Invalid ctx data");
-                    data.friend_info.voice_status = Some(new.to_owned());
+                    data.friend_info.status = new_data.status;
                 }
             }
+            .instrument(info_span!("presence_update_event"))
+            .await;
+
+            Ok(())
+        }
+        FullEvent::VoiceStateUpdate { old: _, new } => {
+            async move {
+                // Considered "Online" if they join a voice channel
+                if let Some(ref member) = new.member {
+                    let user = &member.user;
+                    if let Some(friend_id) = get_friend_id()
+                        && friend_id == user.id
+                    {
+                        let mut data_map = ctx.data.write().await;
+                        let data = data_map
+                            .get_mut::<SerenityCtxData>()
+                            .expect("Invalid ctx data");
+                        data.friend_info.voice_status = Some(new.to_owned());
+                    }
+                }
+            }
+            .instrument(info_span!("voice_state_update_event"))
+            .await;
 
             Ok(())
         }

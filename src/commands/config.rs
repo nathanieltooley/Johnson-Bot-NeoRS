@@ -1,4 +1,5 @@
 use poise::{CreateReply, serenity_prelude::ChannelId};
+use tracing::instrument;
 
 use crate::{
     custom_types::command::{Context, Error},
@@ -6,6 +7,7 @@ use crate::{
 };
 
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn view_server_conf(ctx: Context<'_>) -> Result<(), Error> {
     let db = Database::new(ctx);
     let server_conf = db
@@ -24,6 +26,7 @@ pub async fn view_server_conf(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command)]
+#[instrument(skip(ctx))]
 pub async fn set_error_channel(ctx: Context<'_>, channel_id: ChannelId) -> Result<(), Error> {
     let db = Database::new(ctx);
     db.save_error_channel(ctx.guild_id().expect("not used in DM"), channel_id)
