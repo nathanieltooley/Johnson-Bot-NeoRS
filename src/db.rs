@@ -3,6 +3,7 @@ use crate::custom_types::command::SerenityCtxData;
 use crate::custom_types::mongo_schema::DbUser;
 use crate::custom_types::mongo_schema::ServerConfig;
 
+use std::collections::HashMap;
 use std::f64::consts::E;
 
 use poise::serenity_prelude::{ChannelId, Context, GuildId, RoleId, User, UserId};
@@ -48,9 +49,21 @@ pub struct Database<'context> {
 }
 
 #[repr(u8)]
-enum RelationType {
-    Friend = 1,
+#[derive(Eq, PartialEq, Hash, Clone)]
+pub enum RelationType {
+    Invalid = 0,
+    Friend,
     Blocked,
+}
+
+impl RelationType {
+    pub fn from_u8(t: u8) -> RelationType {
+        match t {
+            1 => RelationType::Friend,
+            2 => RelationType::Blocked,
+            _ => RelationType::Invalid,
+        }
+    }
 }
 
 // 'context is the lifetime of the context passed in
@@ -122,6 +135,7 @@ impl<'context> Database<'context> {
         }
     }
 
+    #[instrument(skip(self))]
     pub async fn give_user_money(
         &self,
         user: &User,
@@ -140,6 +154,7 @@ impl<'context> Database<'context> {
         .await
     }
 
+    #[instrument(skip(self))]
     pub async fn give_user_exp(&self, user: &User, exp: i64) -> sqlx::Result<i64> {
         let pool = self.ctx.get_conn().await;
         let user_id = user_to_id(user);
@@ -156,6 +171,7 @@ impl<'context> Database<'context> {
         Ok(res.exp)
     }
 
+    #[instrument(skip(self))]
     pub async fn user_transaction(
         &self,
         from_user: &User,
@@ -187,6 +203,7 @@ impl<'context> Database<'context> {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn get_server_conf(&self, guild: GuildId) -> sqlx::Result<ServerConfig> {
         let pool = self.ctx.get_conn().await;
         let guild_id = guild_to_id(guild);
@@ -202,6 +219,7 @@ impl<'context> Database<'context> {
         Ok(conf)
     }
 
+    #[instrument(skip(self))]
     pub async fn save_welcome_role(&self, guild: GuildId, role: RoleId) -> sqlx::Result<()> {
         let pool = self.ctx.get_conn().await;
         let role_id: u64 = role.into();
@@ -225,6 +243,7 @@ impl<'context> Database<'context> {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub async fn save_error_channel(&self, guild: GuildId, channel: ChannelId) -> sqlx::Result<()> {
         let pool = self.ctx.get_conn().await;
         let guild_id = guild_to_id(guild);
@@ -249,6 +268,7 @@ impl<'context> Database<'context> {
 
     /// Adds a one-way friendship between the Author and the Target. Returns true if friendship
     /// already exists.
+    #[instrument(skip(self))]
     pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<bool> {
         let pool = self.ctx.get_conn().await;
 
@@ -271,6 +291,7 @@ impl<'context> Database<'context> {
 
     /// Adds a one-way 'block' relationship between Author and Target. If there is an existing
     /// relationship, it will get overridden. Returns true if the user is already blocked.
+    #[instrument(skip(self))]
     pub async fn block_user(&self, author: &User, target: &User) -> sqlx::Result<bool> {
         let pool = self.ctx.get_conn().await;
 
@@ -291,27 +312,33 @@ impl<'context> Database<'context> {
         Ok(result.rows_affected() == 0)
     }
 
-    pub async fn get_friends(&self, author: &User) -> sqlx::Result<Vec<UserId>> {
+    #[instrument(skip(self))]
+    pub async fn get_relations(&self, author: &User) -> sqlx::Result<Vec<(UserId, RelationType)>> {
         let pool = self.ctx.get_conn().await;
 
         let author_id = user_to_id(author);
 
-        let friends = sqlx::query!(
+        let relations: Vec<(UserId, RelationType)> = sqlx::query!(
             "
-                SELECT user_to FROM friendships WHERE user_from = $1 AND relation_type = $2
+                SELECT * FROM friendships WHERE user_from = $1
             ",
             author_id,
-            RelationType::Friend as u8
         )
         .fetch_all(&pool)
         .await?
         .into_iter()
-        .map(|r| UserId::new(r.user_to as u64))
+        .map(|r| {
+            (
+                UserId::new(r.user_to as u64),
+                RelationType::from_u8(r.relation_type as u8),
+            )
+        })
         .collect();
 
-        Ok(friends)
+        Ok(relations)
     }
 
+    #[instrument(skip(self))]
     pub async fn remove_relation(&self, author: &User, target: &User) -> sqlx::Result<()> {
         let pool = self.ctx.get_conn().await;
 
