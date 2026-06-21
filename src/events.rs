@@ -476,7 +476,6 @@ pub async fn event_handler(
             Ok(())
         }
         FullEvent::Message { new_message } => {
-            debug!("test");
             async move {
                 if let Some(guild_id) = new_message.guild_id {
                     // Ignore bot messages
@@ -504,7 +503,6 @@ pub async fn event_handler(
 
                     let mut problems = Problems::default();
 
-                    debug!("start message handlers");
 
                     // These have the ? at the end but will NOT exit early with an error
                     // give_ok only returns early with the FailFast version of a problems recevier
@@ -523,8 +521,6 @@ pub async fn event_handler(
                         .give_ok(&mut problems)?;
 
                     problems.check()?;
-                } else {
-                    debug!("received dm?");
                 }
 
                 Ok(())
