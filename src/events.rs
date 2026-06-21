@@ -423,6 +423,7 @@ pub async fn event_handler(
     _framework: FrameworkContext<'_, Data, Error>,
     data: &Data,
 ) -> Result<(), Error> {
+    info!(event = ?event, "Received event!");
     match event {
         FullEvent::Ready { data_about_bot: _ } => {
             async move {
@@ -437,6 +438,7 @@ pub async fn event_handler(
                             let friend_thread_span = info_span!("friend_thread");
                             tokio::spawn(
                                 async move {
+                                    info!("Friend thread started!");
                                     loop {
                                         if let Err(problem) = friend_thread(
                                             &http_clone,
@@ -678,6 +680,8 @@ async fn friend_thread(
                 .await
                 .via(FriendMessageError::new("Could not send secret message"))?;
 
+            info!("Sent secret message! :)");
+
             tokio::time::sleep(Duration::from_secs(2)).await;
             message
                 .delete(http)
@@ -697,6 +701,7 @@ async fn friend_thread(
 
         info!("Send friend message!");
 
+        info!("Friend thread sleeping for: {MESSAGE_TIME:?}");
         tokio::time::sleep(MESSAGE_TIME).await;
     } else {
         tokio::time::sleep(Duration::from_secs(10)).await;
