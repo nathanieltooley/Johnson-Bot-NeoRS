@@ -1,5 +1,5 @@
 use poise::CreateReply;
-use poise::serenity_prelude::{CreateEmbed, Http, Mentionable, User, UserId};
+use poise::serenity_prelude::{Color, CreateEmbed, Http, Mentionable, User, UserId};
 use tracing::instrument;
 
 use crate::custom_types::command::{Context, Error};
@@ -46,9 +46,11 @@ pub async fn get_relationships(ctx: Context<'_>) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
     let relations = db_handler.get_relations(ctx.author()).await?;
 
-    let mut friend_embed = base_embed().title("Friends");
-    let mut enemies_embed = base_embed().title("Enemies (Blocked)");
-    let mut broken_embed = base_embed().title("This should never appear. Please send help.");
+    let mut friend_embed = base_embed().title("Friends").color(Color::DARK_GREEN);
+    let mut enemies_embed = base_embed().title("Enemies (Blocked)").color(Color::RED);
+    let mut broken_embed = base_embed()
+        .title("This should never appear. Please send help.")
+        .color(Color::DARK_PURPLE);
     let mut friends = Vec::new();
     let mut blocked = Vec::new();
     let mut invalid = Vec::new();
