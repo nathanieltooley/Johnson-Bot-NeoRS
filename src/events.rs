@@ -680,16 +680,17 @@ async fn friend_thread(
     friend: &User,
     friend_name: &str,
 ) -> Result<(), Problem> {
-    let data_map = data.read().await;
-    let friend_info = data_map
-        .get::<SerenityCtxData>()
-        .expect("Invalid ctx data")
-        .friend_info
-        .clone();
+    let friend_online = {
+        let data_map = data.read().await;
+        let friend_info = &data_map
+            .get::<SerenityCtxData>()
+            .expect("Invalid ctx data")
+            .friend_info;
 
-    drop(data_map);
+        friend_info.online()
+    };
 
-    if friend_info.online() {
+    if friend_online {
         if rand_chance(MESSAGE_CHANCE) {
             let message = friend
                 .direct_message(http, CreateMessage::new().content("i want you"))
