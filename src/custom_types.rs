@@ -37,6 +37,7 @@ pub mod command {
         },
     }
 
+    #[derive(Clone)]
     pub struct FriendInfo {
         pub status: OnlineStatus,
         pub voice_status: Option<VoiceState>,

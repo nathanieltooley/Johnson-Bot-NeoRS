@@ -173,7 +173,7 @@ async fn main() {
     let kw_responses: Vec<KeywordResponse> =
         serde_json::from_str(kwr_str).expect("embedded kwr.json str should be valid json");
 
-    info!("Loaded keywords");
+    info!(kw_responses = ?kw_responses, "Loaded keywords");
 
     let guilds = match std::env::var("LEVEL")
         .unwrap_or(String::from("DEBUG"))

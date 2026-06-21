@@ -195,8 +195,10 @@ async fn reward_messenger(
         .via(RewardError::new("Couldn't get user in database"))
         .with(GuildIdAttachment::new(guild_id))?;
 
+    let reward_amount = money_rand();
+
     db_helper
-        .give_user_money(&message.author, money_rand())
+        .give_user_money(&message.author, reward_amount)
         .await
         .via(RewardError::new("Couldn't give user money for message"))
         .with(GuildIdAttachment::new(guild_id))?;
@@ -210,6 +212,10 @@ async fn reward_messenger(
         .with(GuildIdAttachment::new(guild_id))?;
 
     let new_level = db::exp_to_level(res);
+    info!(
+        exp = EXP_PER_MESSAGE,
+        reward_amount, "Gave user exp and money"
+    );
 
     if new_level > prev_level {
         debug!(
@@ -423,7 +429,7 @@ pub async fn event_handler(
     _framework: FrameworkContext<'_, Data, Error>,
     data: &Data,
 ) -> Result<(), Error> {
-    info!(event = ?event, "Received event!");
+    info!(event_name = event.snake_case_name(), "Received event!");
     match event {
         FullEvent::Ready { data_about_bot: _ } => {
             async move {
@@ -470,6 +476,7 @@ pub async fn event_handler(
             Ok(())
         }
         FullEvent::Message { new_message } => {
+            debug!("test");
             async move {
                 if let Some(guild_id) = new_message.guild_id {
                     // Ignore bot messages
@@ -497,6 +504,8 @@ pub async fn event_handler(
 
                     let mut problems = Problems::default();
 
+                    debug!("start message handlers");
+
                     // These have the ? at the end but will NOT exit early with an error
                     // give_ok only returns early with the FailFast version of a problems recevier
                     reward_messenger(guild_id, ctx, new_message)
@@ -514,6 +523,8 @@ pub async fn event_handler(
                         .give_ok(&mut problems)?;
 
                     problems.check()?;
+                } else {
+                    debug!("received dm?");
                 }
 
                 Ok(())
@@ -558,15 +569,16 @@ pub async fn event_handler(
         }
         FullEvent::PresenceUpdate { new_data } => {
             async move {
-                debug!("{new_data:?}");
                 if let Some(friend_id) = get_friend_id()
                     && friend_id == new_data.user.id
                 {
+                    debug!("awaiting data_map");
                     let mut data_map = ctx.data.write().await;
                     let data = data_map
                         .get_mut::<SerenityCtxData>()
                         .expect("Invalid ctx data");
                     data.friend_info.status = new_data.status;
+                    info!(friend_status = ?data.friend_info.status, "Friend's status has been updated!");
                 }
             }
             .instrument(info_span!("presence_update_event"))
@@ -587,6 +599,7 @@ pub async fn event_handler(
                             .get_mut::<SerenityCtxData>()
                             .expect("Invalid ctx data");
                         data.friend_info.voice_status = Some(new.to_owned());
+                        info!(voice_status = ?data.friend_info.voice_status, "Friend joined voice channel!")
                     }
                 }
             }
@@ -668,10 +681,13 @@ async fn friend_thread(
     friend_name: &str,
 ) -> Result<(), Problem> {
     let data_map = data.read().await;
-    let friend_info = &data_map
+    let friend_info = data_map
         .get::<SerenityCtxData>()
         .expect("Invalid ctx data")
-        .friend_info;
+        .friend_info
+        .clone();
+
+    drop(data_map);
 
     if friend_info.online() {
         if rand_chance(MESSAGE_CHANCE) {
@@ -704,6 +720,7 @@ async fn friend_thread(
         info!("Friend thread sleeping for: {MESSAGE_TIME:?}");
         tokio::time::sleep(MESSAGE_TIME).await;
     } else {
+        debug!("Friend is not online :(");
         tokio::time::sleep(Duration::from_secs(10)).await;
     }
 
