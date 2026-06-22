@@ -68,18 +68,42 @@ pub async fn get_relationships(ctx: Context<'_>) -> Result<(), Error> {
     broken_embed = display_users_embed(ctx.http(), &invalid, broken_embed).await;
 
     if !friends.is_empty() {
-        ctx.send(CreateReply::default().embed(friend_embed).reply(true))
-            .await?;
+        ctx.send(
+            CreateReply::default()
+                .embed(friend_embed)
+                .reply(true)
+                .ephemeral(true),
+        )
+        .await?;
     }
 
     if !blocked.is_empty() {
-        ctx.send(CreateReply::default().embed(enemies_embed).reply(true))
-            .await?;
+        ctx.send(
+            CreateReply::default()
+                .embed(enemies_embed)
+                .reply(true)
+                .ephemeral(true),
+        )
+        .await?;
     }
 
     if !invalid.is_empty() {
-        ctx.send(CreateReply::default().embed(broken_embed).reply(true))
-            .await?;
+        ctx.send(
+            CreateReply::default()
+                .embed(broken_embed)
+                .reply(true)
+                .ephemeral(true),
+        )
+        .await?;
+    }
+
+    if friends.is_empty() && blocked.is_empty() && invalid.is_empty() {
+        ctx.send(
+            CreateReply::default()
+                .content("You have nothing")
+                .ephemeral(true),
+        )
+        .await?;
     }
 
     Ok(())
