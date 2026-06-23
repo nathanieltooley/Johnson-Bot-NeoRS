@@ -10,16 +10,48 @@ use crate::utils::message::embed::base_embed;
 #[instrument(skip(ctx))]
 pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
-    let already_added =
-        db_handler.get_relation(ctx.author(), &new_friend).await? == Some(RelationType::Friend);
+    let relation_to = db_handler.get_relation(ctx.author(), &new_friend).await?;
+    let relation_from = db_handler.get_relation(&new_friend, ctx.author()).await?;
 
-    if already_added {
-        ctx.say(format!("{} is already your friend!", new_friend.name))
+    if relation_to == Some(RelationType::Friend) {
+        ctx.say("You are already friends!").await?;
+        return Ok(());
+    }
+
+    db_handler.add_friend(ctx.author(), &new_friend).await?;
+
+    match relation_from {
+        Some(r_from) => match r_from {
+            RelationType::Friend => {
+                ctx.say(format!(
+                    "{} and {} are now both friends!",
+                    ctx.author().mention(),
+                    new_friend.mention()
+                ))
+                .await?;
+            }
+            RelationType::Blocked => {
+                ctx.say(format!(
+                    "{} has you blocked....this is kind of awkward :/",
+                    new_friend.mention()
+                ))
+                .await?;
+            }
+            _ => {
+                ctx.say(format!(
+                    "{} doesn't really know you...let's see if they wanna be friends",
+                    new_friend.mention()
+                ))
+                .await?;
+            }
+        },
+        None => {
+            ctx.say(format!(
+                "{} doesn't really know you...let's see if they wanna be friends",
+                new_friend.mention()
+            ))
             .await?;
-    } else {
-        db_handler.add_friend(ctx.author(), &new_friend).await?;
-        ctx.say(format!("You are now friends with {}", new_friend.mention()))
-            .await?;
+        }
     }
 
     Ok(())
