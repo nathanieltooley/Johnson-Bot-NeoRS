@@ -266,16 +266,15 @@ impl<'context> Database<'context> {
         Ok(())
     }
 
-    /// Adds a one-way friendship between the Author and the Target. Returns true if friendship
-    /// already exists.
+    /// Adds a one-way friendship between the Author and the Target
     #[instrument(skip(self))]
-    pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<bool> {
+    pub async fn add_friend(&self, author: &User, target: &User) -> sqlx::Result<()> {
         let pool = self.ctx.get_conn().await;
 
         let author_id = user_to_id(author);
         let target_id = user_to_id(target);
 
-        let result = sqlx::query!(
+        sqlx::query!(
             "
             REPLACE INTO friendships(user_from, user_to, relation_type) VALUES ($1, $2, $3)
             ",
@@ -286,19 +285,19 @@ impl<'context> Database<'context> {
         .execute(&pool)
         .await?;
 
-        Ok(result.rows_affected() == 0)
+        Ok(())
     }
 
     /// Adds a one-way 'block' relationship between Author and Target. If there is an existing
-    /// relationship, it will get overridden. Returns true if the user is already blocked.
+    /// relationship, it will get overridden.
     #[instrument(skip(self))]
-    pub async fn block_user(&self, author: &User, target: &User) -> sqlx::Result<bool> {
+    pub async fn block_user(&self, author: &User, target: &User) -> sqlx::Result<()> {
         let pool = self.ctx.get_conn().await;
 
         let author_id = user_to_id(author);
         let target_id = user_to_id(target);
 
-        let result = sqlx::query!(
+        sqlx::query!(
             "
             REPLACE INTO friendships(user_from, user_to, relation_type) VALUES ($1, $2, $3)
             ",
@@ -309,7 +308,7 @@ impl<'context> Database<'context> {
         .execute(&pool)
         .await?;
 
-        Ok(result.rows_affected() == 0)
+        Ok(())
     }
 
     #[instrument(skip(self))]
@@ -336,6 +335,28 @@ impl<'context> Database<'context> {
         .collect();
 
         Ok(relations)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_relation(
+        &self,
+        author: &User,
+        target: &User,
+    ) -> sqlx::Result<Option<RelationType>> {
+        let pool = self.ctx.get_conn().await;
+
+        let author_id = user_to_id(author);
+        let target_id = user_to_id(target);
+
+        let relation = sqlx::query!(
+            "SELECT user_to FROM friendships WHERE user_to = $1 AND user_from = $2",
+            author_id,
+            target_id
+        )
+        .fetch_optional(&pool)
+        .await?;
+
+        Ok(relation.map(|r| RelationType::from_u8(r.user_to as u8)))
     }
 
     #[instrument(skip(self))]

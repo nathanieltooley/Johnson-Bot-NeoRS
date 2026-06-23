@@ -10,12 +10,14 @@ use crate::utils::message::embed::base_embed;
 #[instrument(skip(ctx))]
 pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
-    let already_added = db_handler.add_friend(ctx.author(), &new_friend).await?;
+    let already_added =
+        db_handler.get_relation(ctx.author(), &new_friend).await? == Some(RelationType::Friend);
 
     if already_added {
         ctx.say(format!("{} is already your friend!", new_friend.name))
             .await?;
     } else {
+        db_handler.add_friend(ctx.author(), &new_friend).await?;
         ctx.say(format!("You are now friends with {}", new_friend.mention()))
             .await?;
     }
@@ -25,15 +27,17 @@ pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error>
 
 #[poise::command(slash_command, prefix_command)]
 #[instrument(skip(ctx))]
-pub async fn block_user(ctx: Context<'_>, new_friend: User) -> Result<(), Error> {
+pub async fn block_user(ctx: Context<'_>, blocked: User) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
-    let already_added = db_handler.block_user(ctx.author(), &new_friend).await?;
+    let already_added =
+        db_handler.get_relation(ctx.author(), &blocked).await? == Some(RelationType::Blocked);
 
     if already_added {
-        ctx.say(format!("{} is already blocked!", new_friend.name))
+        ctx.say(format!("{} is already blocked!", blocked.name))
             .await?;
     } else {
-        ctx.say(format!("You have blocked {}", new_friend.mention()))
+        db_handler.block_user(ctx.author(), &blocked).await?;
+        ctx.say(format!("You have blocked {}", blocked.mention()))
             .await?;
     }
 
