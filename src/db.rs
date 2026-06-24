@@ -5,6 +5,9 @@ use crate::custom_types::mongo_schema::ServerConfig;
 
 use std::collections::HashMap;
 use std::f64::consts::E;
+use std::fmt::Display;
+use std::fmt::Error;
+use std::fmt::Formatter;
 
 use poise::serenity_prelude::{ChannelId, Context, GuildId, RoleId, User, UserId};
 use sqlx::SqlitePool;
@@ -54,6 +57,16 @@ pub enum RelationType {
     Invalid = 0,
     Friend,
     Blocked,
+}
+
+impl Display for RelationType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            RelationType::Friend => write!(f, "Friend"),
+            RelationType::Blocked => write!(f, "Blocked"),
+            RelationType::Invalid => write!(f, "Invalid"),
+        }
+    }
 }
 
 impl RelationType {
@@ -311,6 +324,8 @@ impl<'context> Database<'context> {
         Ok(())
     }
 
+    /// Get all relations pointing out from the author. Returns a Vec of tuples containing the
+    /// UserId of the target of a relationship and the relation type.
     #[instrument(skip(self))]
     pub async fn get_relations(&self, author: &User) -> sqlx::Result<Vec<(UserId, RelationType)>> {
         let pool = self.ctx.get_conn().await;
@@ -329,6 +344,37 @@ impl<'context> Database<'context> {
         .map(|r| {
             (
                 UserId::new(r.user_to as u64),
+                RelationType::from_u8(r.relation_type as u8),
+            )
+        })
+        .collect();
+
+        Ok(relations)
+    }
+
+    /// Get all relations pointing to target. Returns a Vec of tuples containing the UserId of the
+    /// other person in the relationship and the relation type.
+    #[instrument(skip(self))]
+    pub async fn get_relations_to(
+        &self,
+        target: &User,
+    ) -> sqlx::Result<Vec<(UserId, RelationType)>> {
+        let pool = self.ctx.get_conn().await;
+
+        let target_id = user_to_id(target);
+
+        let relations: Vec<(UserId, RelationType)> = sqlx::query!(
+            "
+                SELECT * FROM friendships WHERE user_to = $1
+            ",
+            target_id,
+        )
+        .fetch_all(&pool)
+        .await?
+        .into_iter()
+        .map(|r| {
+            (
+                UserId::new(r.user_from as u64),
                 RelationType::from_u8(r.relation_type as u8),
             )
         })
