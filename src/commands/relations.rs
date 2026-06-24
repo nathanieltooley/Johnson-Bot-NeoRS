@@ -1,5 +1,7 @@
 use poise::CreateReply;
-use poise::serenity_prelude::{Color, CreateEmbed, Http, Mentionable, User, UserId};
+use poise::serenity_prelude::{
+    Color, CreateEmbed, CreateEmbedFooter, Http, Mentionable, User, UserId,
+};
 use tracing::instrument;
 
 use crate::custom_types::command::{Context, Error};
@@ -61,16 +63,43 @@ pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error>
 #[instrument(skip(ctx))]
 pub async fn block_user(ctx: Context<'_>, blocked: User) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
-    let already_added =
-        db_handler.get_relation(ctx.author(), &blocked).await? == Some(RelationType::Blocked);
+    let relation_to = db_handler.get_relation(ctx.author(), &blocked).await?;
+    let relation_from = db_handler.get_relation(&blocked, ctx.author()).await?;
 
-    if already_added {
-        ctx.say(format!("{} is already blocked!", blocked.name))
-            .await?;
-    } else {
-        db_handler.block_user(ctx.author(), &blocked).await?;
-        ctx.say(format!("You have blocked {}", blocked.mention()))
-            .await?;
+    if relation_to == Some(RelationType::Blocked) {
+        ctx.say("You have already blocked this person!").await?;
+        return Ok(());
+    }
+
+    db_handler.block_user(ctx.author(), &blocked).await?;
+
+    match relation_from {
+        Some(r_from) => match r_from {
+            RelationType::Blocked => {
+                ctx.say(format!(
+                    "{} and {} are now mutual enemies!",
+                    ctx.author().mention(),
+                    blocked.mention()
+                ))
+                .await?;
+            }
+            RelationType::Friend => {
+                ctx.say(format!(
+                    "{} has betrayed {}!",
+                    ctx.author().mention(),
+                    blocked.mention()
+                ))
+                .await?;
+            }
+            _ => {
+                ctx.say(format!("You have blocked {}", blocked.mention()))
+                    .await?;
+            }
+        },
+        None => {
+            ctx.say(format!("You have blocked {}", blocked.mention()))
+                .await?;
+        }
     }
 
     Ok(())
@@ -80,7 +109,9 @@ pub async fn block_user(ctx: Context<'_>, blocked: User) -> Result<(), Error> {
 #[instrument(skip(ctx))]
 pub async fn get_relationships(ctx: Context<'_>) -> Result<(), Error> {
     let db_handler = Database::new(ctx);
+
     let relations = db_handler.get_relations(ctx.author()).await?;
+    let relations_to = db_handler.get_relations_to(ctx.author()).await?;
 
     let mut friend_embed = base_embed().title("Friends").color(Color::DARK_GREEN);
     let mut enemies_embed = base_embed().title("Enemies (Blocked)").color(Color::RED);
@@ -99,9 +130,30 @@ pub async fn get_relationships(ctx: Context<'_>) -> Result<(), Error> {
         }
     }
 
-    friend_embed = display_users_embed(ctx.http(), &friends, friend_embed).await;
-    enemies_embed = display_users_embed(ctx.http(), &blocked, enemies_embed).await;
-    broken_embed = display_users_embed(ctx.http(), &invalid, broken_embed).await;
+    friend_embed = display_users_embed(
+        ctx.http(),
+        &friends,
+        RelationType::Friend,
+        &relations_to,
+        friend_embed,
+    )
+    .await;
+    enemies_embed = display_users_embed(
+        ctx.http(),
+        &blocked,
+        RelationType::Blocked,
+        &relations_to,
+        enemies_embed,
+    )
+    .await;
+    broken_embed = display_users_embed(
+        ctx.http(),
+        &invalid,
+        RelationType::Invalid,
+        &relations_to,
+        broken_embed,
+    )
+    .await;
 
     if !friends.is_empty() {
         ctx.send(
@@ -166,16 +218,40 @@ pub async fn unblock(ctx: Context<'_>, loser: User) -> Result<(), Error> {
     Ok(())
 }
 
-async fn display_users_embed(http: &Http, users: &[UserId], mut embed: CreateEmbed) -> CreateEmbed {
+async fn display_users_embed(
+    http: &Http,
+    users: &[UserId],
+    relation_to_users: RelationType,
+    relations_to_author: &[(UserId, RelationType)],
+    mut embed: CreateEmbed,
+) -> CreateEmbed {
     for user in users {
+        let mutual_str = {
+            relations_to_author
+                .iter()
+                .find(|r| r.0 == *user)
+                .map_or(String::from("Nothing"), |r| {
+                    if r.1 == relation_to_users {
+                        String::from("Mutual")
+                    } else {
+                        r.1.to_string()
+                    }
+                })
+        };
+
         embed = embed.field(
+            format!(
+                "*{mutual_str}* {}",
+                user.to_user(http)
+                    .await
+                    .map_or(String::from("Invalid User"), |user| user.name)
+            ),
             format!("{user}"),
-            user.to_user(http)
-                .await
-                .map_or(String::from("Invalid User"), |user| user.name),
             false,
         )
     }
 
-    embed
+    embed.footer(CreateEmbedFooter::new(
+        "User's relations to you are to the left of their names!",
+    ))
 }
