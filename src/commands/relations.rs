@@ -8,12 +8,13 @@ use tracing::instrument;
 use crate::custom_types::command::{Context, Error};
 use crate::db::{Database, RelationType};
 use crate::utils::message::embed::base_embed;
+use crate::utils::message::send_simple_ephemeral;
 
 #[poise::command(slash_command, prefix_command)]
 #[instrument(skip(ctx))]
 pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error> {
     if ctx.author().id == new_friend.id {
-        ctx.say("You can't friend yourself!").await?;
+        send_simple_ephemeral(&ctx, "You can't friend yourself!").await?;
         return Ok(());
     }
     let db_handler = Database::new(ctx);
@@ -70,7 +71,7 @@ pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error>
 #[instrument(skip(ctx))]
 pub async fn block_user(ctx: Context<'_>, blocked: User) -> Result<(), Error> {
     if ctx.author().id == blocked.id {
-        ctx.say("You can't block yourself!").await?;
+        send_simple_ephemeral(&ctx, "You can't block yourself!").await?;
         return Ok(());
     }
     let db_handler = Database::new(ctx);
@@ -212,7 +213,7 @@ pub async fn get_relationships(ctx: Context<'_>) -> Result<(), Error> {
 #[instrument(skip(ctx))]
 pub async fn unfriend(ctx: Context<'_>, friend: User) -> Result<(), Error> {
     if ctx.author().id == friend.id {
-        ctx.say("You can't unfriend yourself!").await?;
+        send_simple_ephemeral(&ctx, "You can't unfriend yourself!").await?;
         return Ok(());
     }
     let db_handler = Database::new(ctx);
@@ -226,7 +227,7 @@ pub async fn unfriend(ctx: Context<'_>, friend: User) -> Result<(), Error> {
 #[poise::command(slash_command, prefix_command)]
 pub async fn unblock(ctx: Context<'_>, loser: User) -> Result<(), Error> {
     if ctx.author().id == loser.id {
-        ctx.say("You can't unblock yourself!").await?;
+        send_simple_ephemeral(&ctx, "You can't unblock yourself!").await?;
         return Ok(());
     }
     let db_handler = Database::new(ctx);

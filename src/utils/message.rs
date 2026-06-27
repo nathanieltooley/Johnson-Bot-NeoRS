@@ -1,9 +1,26 @@
-use poise::serenity_prelude::{CreateMessage, Message, Result};
+use poise::{
+    CreateReply, ReplyHandle,
+    serenity_prelude::{CreateMessage, Message, Result},
+};
 
 use crate::custom_types::command::Context;
 
 pub fn simple_message(content: &str) -> CreateMessage {
     CreateMessage::new().content(content)
+}
+
+pub async fn send_simple_ephemeral<'ctx>(
+    ctx: &Context<'ctx>,
+    content: &str,
+) -> Result<ReplyHandle<'ctx>> {
+    ctx.send(
+        CreateReply {
+            ..Default::default()
+        }
+        .content(content)
+        .ephemeral(true),
+    )
+    .await
 }
 
 pub async fn simple_channel_message(ctx: &Context<'_>, content: &str) -> Result<Message> {
