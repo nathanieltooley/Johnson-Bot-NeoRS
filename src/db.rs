@@ -3,7 +3,6 @@ use crate::custom_types::command::SerenityCtxData;
 use crate::custom_types::mongo_schema::DbUser;
 use crate::custom_types::mongo_schema::ServerConfig;
 
-use std::collections::HashMap;
 use std::f64::consts::E;
 use std::fmt::Display;
 use std::fmt::Error;
@@ -12,8 +11,8 @@ use std::fmt::Formatter;
 use poise::serenity_prelude::{ChannelId, Context, GuildId, RoleId, User, UserId};
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteQueryResult;
-use tracing::info;
 use tracing::instrument;
+use tracing::{debug, info};
 
 const XP_MULTIPLIER: f64 = 15566f64;
 const XP_TRANSLATION: f64 = 15000f64;
@@ -52,7 +51,7 @@ pub struct Database<'context> {
 }
 
 #[repr(u8)]
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum RelationType {
     Invalid = 0,
     Friend,
@@ -395,14 +394,16 @@ impl<'context> Database<'context> {
         let target_id = user_to_id(target);
 
         let relation = sqlx::query!(
-            "SELECT user_to FROM friendships WHERE user_to = $1 AND user_from = $2",
+            "SELECT relation_type FROM friendships WHERE user_from = $1 AND user_to = $2",
             author_id,
             target_id
         )
         .fetch_optional(&pool)
         .await?;
 
-        Ok(relation.map(|r| RelationType::from_u8(r.user_to as u8)))
+        debug!(relation = ?relation);
+
+        Ok(relation.map(|r| RelationType::from_u8(r.relation_type as u8)))
     }
 
     #[instrument(skip(self))]
