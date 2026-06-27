@@ -24,7 +24,7 @@ pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error>
     debug!(relation_to = ?relation_to, relation_from = ?relation_from, "relations");
 
     if relation_to == Some(RelationType::Friend) {
-        ctx.say("You are already friends!").await?;
+        send_simple_ephemeral(&ctx, "You are already friends!").await?;
         return Ok(());
     }
 
@@ -79,7 +79,7 @@ pub async fn block_user(ctx: Context<'_>, blocked: User) -> Result<(), Error> {
     let relation_from = db_handler.get_relation(&blocked, ctx.author()).await?;
 
     if relation_to == Some(RelationType::Blocked) {
-        ctx.say("You have already blocked this person!").await?;
+        send_simple_ephemeral(&ctx, "You have already blocked this person!").await?;
         return Ok(());
     }
 
