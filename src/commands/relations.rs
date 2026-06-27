@@ -2,6 +2,7 @@ use poise::CreateReply;
 use poise::serenity_prelude::{
     Color, CreateEmbed, CreateEmbedFooter, Http, Mentionable, User, UserId,
 };
+use tracing::debug;
 use tracing::instrument;
 
 use crate::custom_types::command::{Context, Error};
@@ -11,9 +12,15 @@ use crate::utils::message::embed::base_embed;
 #[poise::command(slash_command, prefix_command)]
 #[instrument(skip(ctx))]
 pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error> {
+    if ctx.author().id == new_friend.id {
+        ctx.say("You can't friend yourself!").await?;
+        return Ok(());
+    }
     let db_handler = Database::new(ctx);
     let relation_to = db_handler.get_relation(ctx.author(), &new_friend).await?;
     let relation_from = db_handler.get_relation(&new_friend, ctx.author()).await?;
+
+    debug!(relation_to = ?relation_to, relation_from = ?relation_from, "relations");
 
     if relation_to == Some(RelationType::Friend) {
         ctx.say("You are already friends!").await?;
@@ -62,6 +69,10 @@ pub async fn add_friend(ctx: Context<'_>, new_friend: User) -> Result<(), Error>
 #[poise::command(slash_command, prefix_command)]
 #[instrument(skip(ctx))]
 pub async fn block_user(ctx: Context<'_>, blocked: User) -> Result<(), Error> {
+    if ctx.author().id == blocked.id {
+        ctx.say("You can't block yourself!").await?;
+        return Ok(());
+    }
     let db_handler = Database::new(ctx);
     let relation_to = db_handler.get_relation(ctx.author(), &blocked).await?;
     let relation_from = db_handler.get_relation(&blocked, ctx.author()).await?;
@@ -200,6 +211,10 @@ pub async fn get_relationships(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, prefix_command)]
 #[instrument(skip(ctx))]
 pub async fn unfriend(ctx: Context<'_>, friend: User) -> Result<(), Error> {
+    if ctx.author().id == friend.id {
+        ctx.say("You can't unfriend yourself!").await?;
+        return Ok(());
+    }
     let db_handler = Database::new(ctx);
     db_handler.remove_relation(ctx.author(), &friend).await?;
 
@@ -210,6 +225,10 @@ pub async fn unfriend(ctx: Context<'_>, friend: User) -> Result<(), Error> {
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn unblock(ctx: Context<'_>, loser: User) -> Result<(), Error> {
+    if ctx.author().id == loser.id {
+        ctx.say("You can't unblock yourself!").await?;
+        return Ok(());
+    }
     let db_handler = Database::new(ctx);
     db_handler.remove_relation(ctx.author(), &loser).await?;
 
