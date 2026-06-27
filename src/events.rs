@@ -717,7 +717,6 @@ async fn friend_thread(
         info!("Friend thread sleeping for: {MESSAGE_TIME:?}");
         tokio::time::sleep(MESSAGE_TIME).await;
     } else {
-        debug!("Friend is not online :(");
         tokio::time::sleep(Duration::from_secs(10)).await;
     }
 
